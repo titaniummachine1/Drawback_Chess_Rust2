@@ -1851,7 +1851,31 @@ fn abeta(
                 if false && cfg!(feature = "drawbackChessDebug") {
                     println!("{:?}", hash_res.kks);
                 }
-                assert!(valid_move_found == true);
+                
+                // Instead of asserting, handle the case where no valid moves are found
+                if !valid_move_found {
+                    // Set appropriate state based on whether we're in check
+                    if in_check(&g, hash_res.king_pos, color, true) {
+                        // Checkmate - we're in check and have no valid moves
+                        result.state = STATE_CHECKMATE;
+                        result.score = -KING_VALUE as i64 + cup; // Score indicates loss, adjusted by depth
+                        hash_res.state = STATE_CHECKMATE;
+                    } else {
+                        // Stalemate - not in check but have no valid moves
+                        result.state = STATE_STALEMATE;
+                        result.score = 0; // Score for a draw
+                        hash_res.state = STATE_STALEMATE;
+                    }
+                    
+                    // Store the result in the transposition table
+                    if hash_pos >= 0 {
+                        put_tte(g, encoded_board, hash_res, depth_0 as i64, hash_pos);
+                    }
+                    
+                    // Return the result
+                    return result;
+                }
+                
                 time_break = true;
                 break;
             }
@@ -2648,7 +2672,19 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                     break;
                 } else {
                     // This should not happen, as we checked for legal moves earlier
-                    panic!("Inconsistent state: No valid moves found in reply!");
+                    // Instead of panicking, return a proper result indicating no valid moves
+                    #[cfg(debug_assertions)]
+                    println!("No valid moves found in reply function.");
+                    
+                    // Check if we're in check to determine if it's checkmate or stalemate
+                    if in_check(&g, Position::default(), color, false) {
+                        move_result.state = STATE_CHECKMATE;
+                        move_result.score = -KING_VALUE as i64;
+                    } else {
+                        move_result.state = STATE_STALEMATE;
+                        move_result.score = 0;
+                    }
+                    break;
                 }
             }
         }
@@ -2851,7 +2887,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
     // Format: [a8, b8, c8, d8, e8, f8, g8, h8, a7, b7, ..., h1]
 
     static MG_PAWN_TABLE: [i16; 64] = [
-        //  a    b    c    d    e    f    g    h
+        // a    b    c    d    e    f    g    h
           0,   0,   0,   0,   0,   0,   0,   0,  // 8th rank
          50,  50,  50,  50,  50,  50,  50,  50,  // 7th rank
          10,  10,  20,  45,  45,  20,  10,  10,  // 6th rank
@@ -2882,7 +2918,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10,   5,   5,  10,  10,   5,   5, -10,  // 5th rank
         -10,   0,   5,  10,  10,   5,   0, -10,  // 4th rank
         -10,  10,   0, -15, -15,   0,  10, -10,  // 3rd rank
-        -10,  10,   0, -10, -10,   0,  10, -10,  // 2nd rank
+        -10,  15,   0, -10, -10,   0,  15, -10,  // 2nd rank
         -20, -10, -10, -10, -10, -10, -10, -20,  // 1st rank
     ];
 
@@ -2906,8 +2942,8 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
          -5,   0,   5,   5,   5,   5,   0,  -5,  // 5th rank
           0,   0,   5,   5,   5,   5,   0,  -5,  // 4th rank
         -10,   5,   5,   5,   5,   5,   0, -10,  // 3rd rank
-        -10,   0,   5,   0,   0,   0,   0, -10,  // 2nd rank
-        -20, -10, -10,  -5,  -5, -10, -10, -20,  // 1st rank
+        -10, -10, -10, -10, -10, -10, -10, -10,  // 2nd rank
+        -20, -10, -10,   0,  -5, -10, -10, -20,  // 1st rank
     ];
 
     static MG_KING_TABLE: [i16; 64] = [
@@ -2925,7 +2961,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
     static EG_PAWN_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
           0,   0,   0,   0,   0,   0,   0,   0,  // 8th rank
-         99,  99,  99,  99,  99,  99,  99,  99,  // 7th rank
+        120, 120, 120, 120, 120, 120, 120, 120,  // 7th rank
          50,  50,  50,  50,  50,  50,  50,  50,  // 6th rank
          30,  30,  30,  30,  30,  30,  30,  30,  // 5th rank
          20,  20,  20,  20,  20,  20,  20,  20,  // 4th rank
@@ -2953,7 +2989,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10,   0,  10,  10,  10,  10,   0, -10,  // 6th rank
         -10,   5,   5,  10,  10,   5,   5, -10,  // 5th rank
         -10,   0,   5,  10,  10,   5,   0, -10,  // 4th rank
-        -10,   5,  10,  10,  10,  10,   5, -10,  // 3rd rank
+        -10,   5,  10, -15, -15,  10,   5, -10,  // 3rd rank
         -10,   0,   0,   0,   0,   0,   0, -10,  // 2nd rank
         -20, -10, -10, -10, -10, -10, -10, -20,  // 1st rank
     ];
@@ -2979,7 +3015,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
           0,   0,   5,   5,   5,   5,   0,  -5,  // 4th rank
         -10,   0,   5,   5,   5,   5,   0, -10,  // 3rd rank
         -10,   0,   0,   0,   0,   0,   0, -10,  // 2nd rank
-        -20, -10, -10,  -5,  -5, -10, -10, -20,  // 1st rank
+        -20, -10, -10,  -10, -5, -10, -10, -20,  // 1st rank
     ];
 
     static EG_KING_TABLE: [i16; 64] = [

@@ -778,20 +778,6 @@ fn p(_b: Board) {
     }
 }
 
-fn pf(_b: [i16; 64]) {
-    #[cfg(feature = "drawbackChessDebug")]
-    {
-        let b = _b;
-        for (i, c) in b.iter().enumerate() {
-            print!(" {} ", c);
-            if (i + 1) % 8 == 0 {
-                println!("")
-            }
-        }
-        println!("");
-    }
-}
-
 fn is_void_at(g: &Game, p: Position) -> bool {
     g.board[p as usize] == VOID_ID
 }
@@ -2576,10 +2562,6 @@ pub fn reply(g: &mut Game) -> Move {
     let mut depth = 0;
     let mut result: Move;
     
-    // Fall back to standard opening moves if needed (for debugging)
-    // This ensures we always have at least some valid move
-    let mut has_valid_move = false;
-    
     // Generate all possible moves directly to verify there are legal moves available
     let king_pos = king_pos(g, color);
     
@@ -2833,172 +2815,6 @@ when false:
 
 */
 // 2647 lines 432 as
-
-// Add after the constants but before the evaluation function, around line 450-500
-
-// Base piece values for midgame and endgame
-const MG_PAWN_VALUE: i16 = 94;
-const MG_KNIGHT_VALUE: i16 = 337;
-const MG_BISHOP_VALUE: i16 = 365; 
-const MG_ROOK_VALUE: i16 = 479;
-const MG_QUEEN_VALUE: i16 = 1025;
-
-const EG_PAWN_VALUE: i16 = 100;
-const EG_KNIGHT_VALUE: i16 = 281;
-const EG_BISHOP_VALUE: i16 = 297;
-const EG_ROOK_VALUE: i16 = 512;
-const EG_QUEEN_VALUE: i16 = 929;
-
-// Phase weights for game phase calculation
-const PHASE_PAWN: i16 = 0;
-const PHASE_KNIGHT: i16 = 1;
-const PHASE_BISHOP: i16 = 1;
-const PHASE_ROOK: i16 = 2;
-const PHASE_QUEEN: i16 = 4;
-const PHASE_KING: i16 = 0;
-const TOTAL_PHASE: i16 = 24; // Maximum possible phase value
-
-// Piece-square tables for midgame (white perspective)
-const MG_PAWN_TABLE: [i16; 64] = [
-     0,   0,   0,   0,   0,   0,   0,   0,
-    50,  50,  50,  50,  50,  50,  50,  50,
-    10,  10,  20,  35,  35,  20,  10,  10,
-    10,  15,  30,  70,  70,  30,  15,  10,
-     5,  10,  25,  55,  55,  25,  10,   5,
-     5,   5,   5,   0,   0,   5,   5,   5,
-     0,   0,   0, -30, -30,   0,   0,   0,
-     0,   0,   0,   0,   0,   0,   0,   0
-];
-
-const MG_KNIGHT_TABLE: [i16; 64] = [
-    -80, -50, -30, -30, -30, -30, -50, -80,
-    -50, -20,   0,   0,   0,   0, -20, -50,
-    -30,   0,  15,  20,  20,  15,   0, -30,
-    -30,   5,  20,  25,  25,  20,   5, -30,
-    -30,   0,  15,  20,  20,  15,   0, -30,
-    -30,   5,  15,  15,  15,  15,   5, -30,
-    -50, -20,   0,   5,   5,   0, -20, -50,
-    -80, -50, -30, -30, -30, -30, -50, -80
-];
-
-const MG_BISHOP_TABLE: [i16; 64] = [
-    -20, -10, -10, -10, -10, -10, -10, -20,
-    -10,   0,   0,   0,   0,   0,   0, -10,
-    -10,   0,   5,  10,  10,   5,   0, -10,
-    -10,   5,   5,  10,  10,   5,   5, -10,
-    -10,   0,  10,  10,  10,  10,   0, -10,
-    -10,  10,  10,  10,  10,  10,  10, -10,
-    -10,  15,   0,   0,   0,   0,  15, -10,
-    -20, -10, -10, -10, -10, -10, -10, -20
-];
-
-const MG_ROOK_TABLE: [i16; 64] = [
-     40,  40,  40,   0,   0,  40,  40,  40,
-      5,  15,  15,  50,  50,  15,  50,   5,
-      5,   0,   0,   0,   0,   0,   0,   5,
-      5,   0,   0,   0,   0,   0,   0,   5,
-      5,   0,   0,   0,   0,   0,   0,   5,
-      5,   0,   0,   0,   0,   0,   0,   5,
-      5,   0,   0,   0,   0,   0,   0,   5,
-      0,  -5,   5,   5,   5,  10,  -5,   0
-];
-
-const MG_QUEEN_TABLE: [i16; 64] = [
-    -20, -10, -10,  -5,  -5, -10, -10, -20,
-    -10,   0,   0,   0,   0,   0,   0, -10,
-    -10,   0,   5,   5,   5,   5,   0, -10,
-     -5,   0,   5,   5,   5,   5,   0,  -5,
-      0,   0,   5,   5,   5,   5,   0,  -5,
-    -10,   5,   5,   5,   5,   5,   0, -10,
-    -10,   0,   5,  -5,  -5,   0,   0, -10,
-    -20, -10, -10,  -2,  -5, -10, -10, -20
-];
-
-const MG_KING_TABLE: [i16; 64] = [
-    -120, -120, -120, -120, -120, -120, -120, -120,
-    -100, -100, -100, -100, -100, -100, -100, -100,
-     -80,  -80,  -80,  -80,  -80,  -80,  -80,  -80,
-     -70,  -70,  -70,  -70,  -70,  -70,  -70,  -70,
-     -60,  -60,  -60,  -60,  -60,  -60,  -60,  -60,
-     -40,  -40,  -40,  -40,  -40,  -40,  -40,  -40,
-       0,    0,  -10,  -30,  -30,  -10,    0,    0,
-      20,   50,   10,    0,    0,   10,   50,   20
-];
-
-// Piece-square tables for endgame (white perspective)
-const EG_PAWN_TABLE: [i16; 64] = [
-      0,   0,   0,   0,   0,   0,   0,   0,
-    400, 400, 400, 400, 400, 400, 400, 400,
-     50,  55,  50,  50,  50,  50,  55,  50,
-     30,  35,  30,  30,  30,  30,  35,  30,
-     25,  20,  20,  20,  20,  20,  20,  25,
-     15,  10,  10,  10,  10,  10,  10,  15,
-     10,  10,  10,  10,  10,  10,  10,  10,
-      0,   0,   0,   0,   0,   0,   0,   0
-];
-
-const EG_KNIGHT_TABLE: [i16; 64] = [
-    -50, -40, -30, -30, -30, -30, -40, -50,
-    -40, -20,   0,   0,   0,   0, -20, -40,
-    -30,   0,  10,  15,  15,  10,   0, -30,
-    -30,   5,  15,  20,  20,  15,   5, -30,
-    -30,   0,  15,  20,  20,  15,   0, -30,
-    -30,   5,  10,  15,  15,  10,   5, -30,
-    -40, -20,   0,   5,   5,   0, -20, -40,
-    -50, -40, -30, -30, -30, -30, -40, -50
-];
-
-const EG_BISHOP_TABLE: [i16; 64] = [
-    -20, -10, -10, -10, -10, -10, -10, -20,
-    -10,   0,   0,   0,   0,   0,   0, -10,
-    -10,   0,   5,  10,  10,   5,   0, -10,
-    -10,   5,   5,  10,  10,   5,   5, -10,
-    -10,   0,  10,  10,  10,  10,   0, -10,
-    -10,  10,  10,  10,  10,  10,  10, -10,
-    -10,  10,   0,   0,   0,   0,  10, -10,
-    -20, -10, -10, -10, -10, -10, -10, -20
-];
-
-const EG_ROOK_TABLE: [i16; 64] = [
-     40,  40,  40,   0,   0,  40,  40,  40,
-      5,  10,  10,  10,  10,  10,  10,   5,
-     -5,   0,   0,   0,   0,   0,   0,  -5,
-     -5,   0,   0,   0,   0,   0,   0,  -5,
-     -5,   0,   0,   0,   0,   0,   0,  -5,
-     -5,   0,   0,   0,   0,   0,   0,  -5,
-     -5,   0,   0,   0,   0,   0,   0,  -5,
-      0,   0,  10,   5,   5,  10,   0,   0
-];
-
-const EG_QUEEN_TABLE: [i16; 64] = [
-    -20, -10, -10,  -5,  -5, -10, -10, -20,
-    -10,   0,   0,   0,   0,   0,   0, -10,
-    -10,   0,   5,   5,   5,   5,   0, -10,
-     -5,   0,   5,   5,   5,   5,   0,  -5,
-      0,   0,   5,   5,   5,   5,   0,  -5,
-    -10,   5,   5,   5,   5,   5,   0, -10,
-    -10,   0,   5,   0,   0,   0,   0, -10,
-    -20, -10, -10,  -5,  -5, -10, -10, -20
-];
-
-const EG_KING_TABLE: [i16; 64] = [
-    -50, -30, -30, -30, -30, -30, -30, -50,
-    -30, -20, -20, -20, -20, -20, -20, -30,
-    -30, -10,  -5,   0,   0,  -5, -10, -30,
-    -30, -10,   0,  10,  10,   0, -10, -30,
-    -30, -10,   0,  10,  10,   0, -10, -30,
-    -30, -10,  -5,   0,   0,  -5, -10, -30,
-    -30, -20, -20, -20, -20, -20, -20, -30,
-    -50, -30, -30, -30, -30, -30, -30, -50
-];
-
-// Function to flip square for black's perspective (mirror vertically)
-fn flip_square(sq: Position) -> Position {
-    let rank = sq / 8;
-    let file = sq % 8;
-    let flipped_rank = 7 - rank;
-    (flipped_rank * 8 + file) as Position
-}
 
 // Calculate the game phase based on remaining pieces (simplified approach)
 fn calculate_game_phase(board: &Board) -> f32 {

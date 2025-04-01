@@ -29,6 +29,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
+use rand::Rng;
+use once_cell::sync::Lazy; // Added for lazy static initialization
 
 // ### our own primitive bitset type
 #[derive(Copy, Clone, Debug)]
@@ -2881,9 +2883,23 @@ fn get_interpolated_piece_value(piece_type: i64, phase: f32) -> i16 {
     value
 }
 
+// --- Helper function to flip a PST vertically ---
+fn flip_pst(table: &'static [i16; 64]) -> [i16; 64] {
+    let mut flipped_table = [0i16; 64];
+    for rank in 0..8 {
+        for file in 0..8 {
+            let original_idx = rank * 8 + file;
+            let flipped_idx = (7 - rank) * 8 + file;
+            flipped_table[flipped_idx] = table[original_idx];
+        }
+    }
+    flipped_table
+}
+
 // Get the piece-square table value
+// Uses pre-calculated flipped tables for Black perspective
 fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase: f32) -> i16 {
-    // Tables for piece-square evaluation
+    // Tables for piece-square evaluation (White's perspective)
     // Format: [a8, b8, c8, d8, e8, f8, g8, h8, a7, b7, ..., h1]
 
     static MG_PAWN_TABLE: [i16; 64] = [
@@ -2897,6 +2913,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
           5,  10,  10, -25, -25,  10,  10,   5,  // 2nd rank
           0,   0,   0,   0,   0,   0,   0,   0,  // 1st rank
     ];
+    static FLIPPED_MG_PAWN_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_PAWN_TABLE));
 
     static MG_KNIGHT_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2909,6 +2926,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -40, -20,   0,   5,   5,   0, -20, -40,  // 2nd rank
         -50, -40, -30, -30, -30, -30, -40, -50,  // 1st rank
     ];
+    static FLIPPED_MG_KNIGHT_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_KNIGHT_TABLE));
 
     static MG_BISHOP_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2921,6 +2939,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10,  15,   0, -10, -10,   0,  15, -10,  // 2nd rank
         -20, -10, -10, -10, -10, -10, -10, -20,  // 1st rank
     ];
+    static FLIPPED_MG_BISHOP_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_BISHOP_TABLE));
 
     static MG_ROOK_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2933,6 +2952,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
          -5,   0,   0,   0,   0,   0,   0,  -5,  // 2nd rank
           0,   0,   0,   5,   5,   0,   0,   0,  // 1st rank
     ];
+    static FLIPPED_MG_ROOK_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_ROOK_TABLE));
 
     static MG_QUEEN_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2945,6 +2965,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10, -10, -10, -10, -10, -10, -10, -10,  // 2nd rank
         -20, -10, -10,   0,  -5, -10, -10, -20,  // 1st rank
     ];
+    static FLIPPED_MG_QUEEN_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_QUEEN_TABLE));
 
     static MG_KING_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2957,6 +2978,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
          20,  20,   0,   0,   0,   0,  20,  20,  // 2nd rank
          20,  30,  10,   0,   0,  10,  30,  20,  // 1st rank
     ];
+    static FLIPPED_MG_KING_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&MG_KING_TABLE));
 
     static EG_PAWN_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2969,6 +2991,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
           5,   5,   5,   5,   5,   5,   5,   5,  // 2nd rank
           0,   0,   0,   0,   0,   0,   0,   0,  // 1st rank
     ];
+    static FLIPPED_EG_PAWN_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_PAWN_TABLE));
 
     static EG_KNIGHT_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2981,6 +3004,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -40, -20,   0,   0,   0,   0, -20, -40,  // 2nd rank
         -50, -40, -30, -30, -30, -30, -40, -50,  // 1st rank
     ];
+    static FLIPPED_EG_KNIGHT_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_KNIGHT_TABLE));
 
     static EG_BISHOP_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -2993,6 +3017,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10,   0,   0,   0,   0,   0,   0, -10,  // 2nd rank
         -20, -10, -10, -10, -10, -10, -10, -20,  // 1st rank
     ];
+    static FLIPPED_EG_BISHOP_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_BISHOP_TABLE));
 
     static EG_ROOK_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -3005,6 +3030,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
          -5,   0,   0,   0,   0,   0,   0,  -5,  // 2nd rank
           0,   0,   0,   5,   5,   0,   0,   0,  // 1st rank
     ];
+    static FLIPPED_EG_ROOK_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_ROOK_TABLE));
 
     static EG_QUEEN_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -3017,6 +3043,7 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -10,   0,   0,   0,   0,   0,   0, -10,  // 2nd rank
         -20, -10, -10,  -10, -5, -10, -10, -20,  // 1st rank
     ];
+    static FLIPPED_EG_QUEEN_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_QUEEN_TABLE));
 
     static EG_KING_TABLE: [i16; 64] = [
         //  a    b    c    d    e    f    g    h
@@ -3029,30 +3056,31 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         -30, -30,   0,   0,   0,   0, -30, -30,  // 2nd rank
         -50, -30, -30, -30, -30, -30, -30, -50,  // 1st rank
     ];
+    static FLIPPED_EG_KING_TABLE: Lazy<[i16; 64]> = Lazy::new(|| flip_pst(&EG_KING_TABLE));
 
-    // Select the tables based on piece type
-    let (mg_table, eg_table) = match piece_type {
-        PAWN_ID => (&MG_PAWN_TABLE, &EG_PAWN_TABLE),
-        KNIGHT_ID => (&MG_KNIGHT_TABLE, &EG_KNIGHT_TABLE),
-        BISHOP_ID => (&MG_BISHOP_TABLE, &EG_BISHOP_TABLE),
-        ROOK_ID => (&MG_ROOK_TABLE, &EG_ROOK_TABLE),
-        QUEEN_ID => (&MG_QUEEN_TABLE, &EG_QUEEN_TABLE),
-        KING_ID => (&MG_KING_TABLE, &EG_KING_TABLE),
+    // Select the tables based on piece type and color
+    let (mg_table, eg_table): (&[i16; 64], &[i16; 64]) = match piece_type {
+        PAWN_ID => if is_white { (&MG_PAWN_TABLE, &EG_PAWN_TABLE) } else { (&*FLIPPED_MG_PAWN_TABLE, &*FLIPPED_EG_PAWN_TABLE) },
+        KNIGHT_ID => if is_white { (&MG_KNIGHT_TABLE, &EG_KNIGHT_TABLE) } else { (&*FLIPPED_MG_KNIGHT_TABLE, &*FLIPPED_EG_KNIGHT_TABLE) },
+        BISHOP_ID => if is_white { (&MG_BISHOP_TABLE, &EG_BISHOP_TABLE) } else { (&*FLIPPED_MG_BISHOP_TABLE, &*FLIPPED_EG_BISHOP_TABLE) },
+        ROOK_ID => if is_white { (&MG_ROOK_TABLE, &EG_ROOK_TABLE) } else { (&*FLIPPED_MG_ROOK_TABLE, &*FLIPPED_EG_ROOK_TABLE) },
+        QUEEN_ID => if is_white { (&MG_QUEEN_TABLE, &EG_QUEEN_TABLE) } else { (&*FLIPPED_MG_QUEEN_TABLE, &*FLIPPED_EG_QUEEN_TABLE) },
+        KING_ID => if is_white { (&MG_KING_TABLE, &EG_KING_TABLE) } else { (&*FLIPPED_MG_KING_TABLE, &*FLIPPED_EG_KING_TABLE) },
         _ => return 0,
     };
 
-    // Get square index, flipped for black pieces
-    let idx = if is_white {
-        square
-    } else {
-        // Flip square for black perspective (mirror vertically)
-        let rank = square / 8;
-        let file = square % 8;
-        (7 - rank) * 8 + file
-    };
+    // Get square index, flipped for black pieces -> REMOVED, using pre-flipped tables now
+    // let idx = if is_white {
+    //     square
+    // } else {
+    //     // Flip square for black perspective (mirror vertically)
+    //     let rank = square / 8;
+    //     let file = square % 8;
+    //     (7 - rank) * 8 + file
+    // };
 
-    // Interpolate between midgame and endgame tables
-    let value = (mg_table[idx] as f32 * phase + eg_table[idx] as f32 * (1.0 - phase)) as i16;
+    // Interpolate between midgame and endgame tables using the direct square index
+    let value = (mg_table[square] as f32 * phase + eg_table[square] as f32 * (1.0 - phase)) as i16;
 
     // Scale down PST value to not overwhelm material value
     // This factor can be tuned based on engine behavior

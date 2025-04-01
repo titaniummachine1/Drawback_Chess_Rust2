@@ -7,18 +7,21 @@ edition = "2021"
 mpsc = "*"
 num-traits = "*"
 # bitintr = "*"
-eframe = { version = "*", features = [
-    "default",
-    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
-] }
+eframe = "0.27.2"
 
 # For image support:
-egui_extras = { version = "*", features = ["default", "image"] }
+egui_extras = { version = "0.27", features = ["image"] }
 
-env_logger = { version = "0.10", default-features = false, features = [
-    "auto-color",
-    "humantime",
-] }
+# env_logger = { version = "0.10", default-features = false, features = [
+#     "auto-color",
+#     "humantime",
+# ] }
+
+rand = "0.8"
+once_cell = "1.19" # Added for lazy static initialization
+
+[profile.release]
+opt-level = 2 # fast and small wasm
 
 [features]
 drawbackChessDebug = []

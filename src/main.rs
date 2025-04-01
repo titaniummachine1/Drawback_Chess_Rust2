@@ -1,6 +1,7 @@
 // Plain egui frontend for DrawbackChess2
 // v 0.1 -- 2024
-// Based on tiny-chess by Stefan Salewski
+// Based on tiny-chess by Dr. Stefan Salewski (https://github.com/StefanSalewski/tiny-chess)
+// Original code under MIT license
 
 // this is a version with threading, using spawn and channels
 

@@ -7,7 +7,7 @@
 // The move generation is based on old ideas of precalculation, similar as it was done
 // in early GNU-Chess engines in the late 1980's.
 //
-// TODO:
+//
 // create a real GUI: well, at least we have an egui version with threading now
 // avoid global variables, make board a parameter of abeta() // Done in Rust port
 // make transposition table size configurable?

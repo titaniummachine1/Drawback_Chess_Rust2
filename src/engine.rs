@@ -2282,8 +2282,8 @@ fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
 
     //when defined(drawbackChessDebug):
     if cfg!(feature = "drawbackChessDebug") {
-        write_statistics(&g);
-    }
+            write_statistics(&g);
+        }
 
     result
 }
@@ -2643,14 +2643,14 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             move_result = result;
 
             #[cfg(debug_assertions)]
-            println!(
+        println!(
                 "Depth: {} {}{} -> {}{} score {} ({:.2} s)", // Show src/dst directly
-                depth,
+            depth,
                 col_str(col(result.src as i8)),
                 row_str(row(result.src as i8)),
                 col_str(col(result.dst as i8)),
                 row_str(row(result.dst as i8)),
-                result.score,
+            result.score,
                 g.start_time.elapsed().as_millis() as f64 * 1e-3
             );
         } else {
@@ -2730,9 +2730,9 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             if result.score > 1000 || result.score < -1000 {
                 #[cfg(debug_assertions)]
                 println!("Found winning position, terminating search");
-                break;
-            }
+            break;
         }
+    }
 
         // 3. Exceeded target thinking time
         if g.start_time.elapsed() > target_thinking_time {

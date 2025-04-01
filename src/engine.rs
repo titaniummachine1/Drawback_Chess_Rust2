@@ -1568,14 +1568,19 @@ fn abeta(
     old_list_len: i64,
     ep_pos: i8,
 ) -> Move {
+    // Default invalid result
     let mut result = Move {
         state: STATE_NO_VALID_MOVE,
         score: LOWEST_SCORE as i64,
         ..Default::default()
     };
-    if g.start_time.elapsed() > g.time_4 {
-        return result; // invalid due to hard time contraints.
+    
+    // Hard time limit check - quit search if we've reached the target time
+    // Using time_0 as that's our target thinking time set in the reply function
+    if g.start_time.elapsed() > g.time_0 {
+        return result; // Return invalid move if time's up
     }
+    
     debug_assert!(alpha_0 < beta);
     debug_inc(&mut g.ab_call);
     debug_assert!(MAX_DEPTH == 15);
@@ -1604,6 +1609,12 @@ fn abeta(
     back = g.board; // test board integrity
     let v_depth = v_depth - V_RATIO;
     let encoded_board = encode_board(&g, color);
+    
+    // Another time check before expensive transposition table lookup
+    if g.start_time.elapsed() > g.time_0 {
+        return result;
+    }
+    
     let hash_pos = get_tte(g, encoded_board);
     if hash_pos >= 0 {
         hash_res = g.tt[hash_pos as usize].res.clone(); // no way to avoid the clone() here
@@ -1646,26 +1657,17 @@ fn abeta(
         init_hr(&mut hash_res);
         hash_res.queen_pos = -1;
     }
-
-    //when false: // possible, but makes not much sense
-    /*
-    if false {
-        if hash_pos < 0 && depth_0 > 3 {
-            // fast movelist ordering
-            abeta(
-                g,
-                color,
-                v_depth - 2 * V_RATIO,
-                cup,
-                alpha_0,
-                beta,
-                old_list_len,
-                -1,
-            );
-            hash_pos = get_tte(&g, encoded_board, &mut hash_res);
-        }
+    
+    // Time check before expensive move generation
+    if g.start_time.elapsed() > g.time_0 {
+        // Create default invalid move to return
+        let early_result = Move {
+            state: STATE_NO_VALID_MOVE,
+            score: LOWEST_SCORE as i64,
+            ..Default::default()
+        };
+        return early_result;
     }
-    */
 
     let mut evaluation: i16 = LOWEST_SCORE;
     if depth_0 == 0 {
@@ -2208,13 +2210,29 @@ fn _check_mate_in(score: i64) -> i64 {
 
 fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
     debug_assert!((0.1..10.0).contains(&g.secs_per_move));
-    //g.time_0 = Duration::from_secs_f32(g.secs_per_move * 0.7);
-    g.time_2 = Duration::from_secs_f32(g.secs_per_move * 1.5);
-    g.time_3 = Duration::from_secs_f32(g.secs_per_move * 2.5);
-    //g.time_4 = Duration::from_secs_f32(g.secs_per_move * 5.0);
-    g.start_time = Instant::now();
+    
+    // Don't override time controls set in reply()
+    // The start_time is already set in the reply function
+    
+    // Reset statistics for this search
     reset_statistics(g);
-    let result = abeta(
+    
+    // Start the search with a properly defined result
+    let mut result = Move {
+        state: STATE_NO_VALID_MOVE,
+        score: LOWEST_SCORE as i64,
+        ..Default::default()
+    };
+    
+    // Only proceed if we haven't exceeded time limit already
+    if g.start_time.elapsed() > g.time_4 {
+        #[cfg(debug_assertions)]
+        println!("Time limit exceeded before starting search");
+        return result;
+    }
+    
+    // Call the actual search function
+    result = abeta(
         g,
         color,
         depth * V_RATIO + V_RATIO / 2,
@@ -2224,13 +2242,12 @@ fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
         20,
         ep_pos,
     );
+    
     //when defined(drawbackChessDebug):
-    if true {
-        if false || cfg!(feature = "drawbackChessDebug") {
-            write_statistics(&g);
-        }
-        //echo result
+    if cfg!(feature = "drawbackChessDebug") {
+        write_statistics(&g);
     }
+    
     result
 }
 
@@ -2519,14 +2536,15 @@ fn setup_endgame(g: &mut Game) -> bool {
 }
 
 pub fn reply(g: &mut Game) -> Move {
-    //let back_move
+    // Initialize with a default invalid move 
     let mut move_result = Move {
         state: STATE_NO_VALID_MOVE,
         score: LOWEST_SCORE as i64,
         ..Default::default()
     };
+    
+    // Determine the color to play
     let color = ((g.move_counter as i64 + 1) % 2) * 2 - 1;
-    let mut result: Move = Default::default();
     
     // Check if we're in endgame
     if setup_endgame(g) {
@@ -2541,24 +2559,88 @@ pub fn reply(g: &mut Game) -> Move {
     }
     
     // Set up timing controls
-    let start_time = Instant::now();
-    let min_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.5); // Always use at least half of allocated time
-    let max_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.95); // Use up to 95% of allocated time
-    g.time_0 = max_thinking_time;
-    g.time_4 = Duration::MAX;
+    g.start_time = Instant::now();
     
+    // Timing strategy: 
+    // - Always use at least minimum time to get a decent move
+    // - Never exceed maximum time to avoid UI lag
+    let min_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.2); // At least 20% of allocated time
+    let target_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.8); // Target 80% of allocated time
+    let max_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.95); // Never exceed 95% of time
+    
+    // Store time limits in the game struct for abeta to access
+    g.time_0 = target_thinking_time;
+    g.time_4 = max_thinking_time;
+    
+    // Init starting depth
     let mut depth = 0;
+    let mut result: Move;
+    
+    // Fall back to standard opening moves if needed (for debugging)
+    // This ensures we always have at least some valid move
+    let mut has_valid_move = false;
+    
+    // Generate all possible moves directly to verify there are legal moves available
+    let king_pos = king_pos(g, color);
+    
+    // First collect all piece positions and types that could have moves
+    let mut piece_positions: Vec<(usize, i64)> = Vec::new();
+    for (pos, &piece) in g.board.iter().enumerate() {
+        if piece != 0 && signum(piece as i64) as Color == color {
+            piece_positions.push((pos, piece as i64));
+        }
+    }
+    
+    // Now check if any of these pieces have legal moves
+    let mut has_valid_move = false;
+    for (pos, _) in piece_positions {
+        let moves = tag(g, pos as i64);
+        if !moves.is_empty() {
+            has_valid_move = true;
+            break;
+        }
+    }
+    
+    if !has_valid_move {
+        // Game is over - either checkmate or stalemate
+        if in_check(g, king_pos, color, true) {
+            move_result.state = STATE_CHECKMATE;
+            #[cfg(debug_assertions)]
+            println!("Checkmate detected!");
+        } else {
+            move_result.state = STATE_STALEMATE;
+            #[cfg(debug_assertions)]
+            println!("Stalemate detected!");
+        }
+        return move_result;
+    }
     
     // Iterative deepening loop
     while depth < MAX_DEPTH {
+        // Check if we've already exceeded max time before starting next depth
+        if g.start_time.elapsed() > max_thinking_time {
+            #[cfg(debug_assertions)]
+            println!("Time limit reached before depth {}", depth + 1);
+            break;
+        }
+        
         depth += 1;
         
         // Search to the current depth
-        result = alphabeta(g, color as i64, depth as i64, g.pjm);
+        result = alphabeta(g, color, depth as i64, g.pjm);
         
         // If we found a valid move, update our best move
         if result.score != LOWEST_SCORE as i64 {
             move_result = result;
+            
+            #[cfg(debug_assertions)]
+            println!(
+                "Depth: {} {} score {} ({:.2} s)",
+                depth,
+                _m_2_str(g, result.src as i8, result.dst as i8),
+                result.score,
+                g.start_time.elapsed().as_millis() as f64 * 1e-3
+            );
         } else {
             // If no valid move was found (should be rare), use the previous best move
             if move_result.score != LOWEST_SCORE as i64 {
@@ -2566,43 +2648,85 @@ pub fn reply(g: &mut Game) -> Move {
                 println!("--- hard cut at depth {}", depth);
                 break;
             } else {
-                // This is an error state - no valid moves found at all
-                panic!("No valid moves found in reply!");
+                // Try a random legal move if we still don't have anything
+                // First, collect all legal moves
+                let mut legal_moves: Vec<(i8, i8)> = Vec::new();
+                
+                // First collect piece positions to avoid borrow issues
+                let mut piece_positions: Vec<(usize, i64)> = Vec::new();
+                for (pos, &piece) in g.board.iter().enumerate() {
+                    if piece != 0 && signum(piece as i64) as Color == color {
+                        piece_positions.push((pos, piece as i64));
+                    }
+                }
+                
+                // Now check each piece for legal moves
+                for (pos, _) in piece_positions {
+                    for m in tag(g, pos as i64) {
+                        legal_moves.push((pos as i8, m.di));
+                    }
+                }
+                
+                if !legal_moves.is_empty() {
+                    // Pick a random legal move
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let seed = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as usize;
+                    let random_idx = seed % legal_moves.len();
+                    let (src, dst) = legal_moves[random_idx];
+                    
+                    #[cfg(debug_assertions)]
+                    println!("Using random legal move as fallback");
+                    
+                    move_result.src = src as i64;
+                    move_result.dst = dst as i64;
+                    move_result.state = STATE_PLAYING;
+                    break;
+                } else {
+                    // This should not happen, as we checked for legal moves earlier
+                    panic!("Inconsistent state: No valid moves found in reply!");
+                }
             }
         }
         
-        #[cfg(debug_assertions)]
-        println!(
-            "Depth: {} {} score {} ({:.2} s)",
-            depth,
-            _m_2_str(g, result.src as i8, result.dst as i8),
-            result.score,
-            start_time.elapsed().as_millis() as f64 * 1e-3
-        );
-        
         // Early termination conditions
         
-        // 1. Found mate
+        // 1. Found checkmate
         if result.score.abs() > SURE_CHECKMATE as i64 {
+            #[cfg(debug_assertions)]
+            println!("Found checkmate, terminating search");
             break;
         }
         
-        // 2. Exceeded minimum thinking time
-        if start_time.elapsed() > min_thinking_time {
-            // Only stop if we've completed at least depth 4
-            if depth >= 4 {
+        // 2. Exceeded minimum thinking time and completed at least depth 4
+        if g.start_time.elapsed() > min_thinking_time && depth >= 4 {
+            // Stop if we've found a winning position
+            if result.score > 1000 || result.score < -1000 {
+                #[cfg(debug_assertions)]
+                println!("Found winning position, terminating search");
                 break;
             }
         }
         
-        // 3. Exceeded maximum thinking time
-        if start_time.elapsed() > max_thinking_time {
+        // 3. Exceeded target thinking time
+        if g.start_time.elapsed() > target_thinking_time {
+            #[cfg(debug_assertions)]
+            println!("Reached target thinking time");
+            break;
+        }
+        
+        // 4. Exceeded maximum thinking time
+        if g.start_time.elapsed() > max_thinking_time {
+            #[cfg(debug_assertions)]
+            println!("Reached maximum thinking time");
             break;
         }
     }
     
     #[cfg(debug_assertions)]
-    println!("Final depth: {}, time: {:.2}s", depth, start_time.elapsed().as_secs_f32());
+    println!("Final depth: {}, time: {:.2}s", depth, g.start_time.elapsed().as_secs_f32());
     
     return move_result;
 }
@@ -3087,4 +3211,5 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
     let scaled_value = (value as f32 * pst_scale_factor) as i16;
     
     scaled_value
-}
+                }
+                

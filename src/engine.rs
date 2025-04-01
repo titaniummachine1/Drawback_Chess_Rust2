@@ -379,7 +379,6 @@ fn write_statistics(g: &Game) {
     println!("null_move_succ_2: {}", g.null_move_succ_2);
     println!("re_eval_skip: {}", g.re_eval_skip);
     println!("max_delta_len: {}", g.max_delta_len);
-    println!("to_100: {}", g.to_100);
 }
 
 type BitBuffer192 = [u8; bit_buffer_size()];
@@ -2384,40 +2383,58 @@ pub fn get_board(g: &Game) -> Board {
     return g.board;
 }
 
+// Unicode pieces for display
+const UNICODE_PIECES: [&str; 13] = [
+    "♚", "♛", "♜", "♝", "♞", "♟", // Black
+    "", // Empty
+    "♙", "♘", "♗", "♖", "♕", "♔", // White
+];
+
 // call this after do_move()
 pub fn move_to_str(g: &Game, si: Position, di: Position, flag: i32) -> String {
-    //when true: // move_is_valid(si, di): // avoid unnecessary expensive test
-    let mut result: String;
-    if true {
-        if g.board[di as usize].abs() == KING_ID && (di - si).abs() == 2 {
-            result = String::from(if col(di) == 1 { "o-o" } else { "o-o-o" });
-        } else {
-            result = String::from(FIG_STR[g.board[di as usize].abs() as usize]);
-            result.push(col_str(col(si)));
-            result.push(row_str(row(si)));
-            result.push(if flag == FLAG_CAPTURE || flag == FLAG_PROCAP {
-                'x'
-            } else {
-                '-'
-            });
-            result.push(col_str(col(di)));
-            result.push(row_str(row(di)));
-            if flag == FLAG_EP || flag == FLAG_PROCAP {
-                result.push_str(" e.p.");
-            }
-        }
-        if in_check(
-            &g,
-            king_pos(&g, (-signum(g.board[di as usize])) as Color),
-            (-signum(g.board[di as usize])) as Color,
-            true,
-        ) {
-            result.push_str(" +");
-        }
-    } else {
-        result = String::from("invalid move");
+    let piece_moved = g.board[di as usize]; // Piece is already at destination
+    let piece_type = piece_moved.abs();
+    let is_capture = flag == FLAG_CAPTURE || flag == FLAG_PROCAP || flag == FLAG_EP;
+    
+    // Handle castling first
+    if piece_type == KING_ID && (di - si).abs() == 2 {
+        return String::from(if col(di) < col(si) { "O-O-O" } else { "O-O" });
     }
-    result
+    
+    let mut pgn = String::new();
+    
+    // Add piece character (including pawns now)
+    pgn.push_str(UNICODE_PIECES[(piece_moved + 6) as usize]);
+    
+    // Add source square file for pawn captures
+    if piece_type == PAWN_ID && is_capture {
+        pgn.push(col_str(col(si)));
+    }
+    
+    // Add capture symbol
+    if is_capture {
+        pgn.push('x');
+    }
+    
+    // Add destination square
+    pgn.push(col_str(col(di)));
+    pgn.push(row_str(row(di)));
+    
+    // Add promotion
+    if flag == FLAG_PROMOTION || flag == FLAG_PROCAP {
+        // Assuming Queen promotion for now, as engine does
+        pgn.push_str(&format!("={}", UNICODE_PIECES[(QUEEN_ID * signum(piece_moved) + 6) as usize]));
+    }
+    
+    // Check for check/checkmate (check only for now)
+    let opponent_color = opp_color(signum(piece_moved));
+    let opponent_king_pos = king_pos(&g, opponent_color);
+    if in_check(&g, opponent_king_pos, opponent_color, true) {
+         // Checkmate detection happens later based on score
+         pgn.push('+');
+    }
+    
+    pgn
 }
 
 pub fn _m_2_str(g: &Game, si: Position, di: Position) -> String {
@@ -2617,9 +2634,12 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             
             #[cfg(debug_assertions)]
             println!(
-                "Depth: {} {} score {} ({:.2} s)",
+                "Depth: {} {}{} -> {}{} score {} ({:.2} s)", // Show src/dst directly
                 depth,
-                _m_2_str(g, result.src as i8, result.dst as i8),
+                col_str(col(result.src as i8)), 
+                row_str(row(result.src as i8)),
+                col_str(col(result.dst as i8)), 
+                row_str(row(result.dst as i8)),
                 result.score,
                 g.start_time.elapsed().as_millis() as f64 * 1e-3
             );

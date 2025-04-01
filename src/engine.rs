@@ -161,6 +161,7 @@ pub struct Game {
     time_4: std::time::Duration,
     pub move_counter: u16,
     pjm: i8,
+    killer_moves: [[(i8, i8); 2]; MAX_DEPTH + 1], // Store 2 killer moves (src, dst) per ply
 }
 
 pub fn print_move_list(g: &Game) {
@@ -273,6 +274,7 @@ pub fn new_game() -> Game {
         to_100: 0,
         move_counter: 0,
         pjm: -1,
+        killer_moves: [[(0, 0); 2]; MAX_DEPTH + 1], // Initialize killer moves
     };
     init_pawn(&mut g, COLOR_WHITE);
     init_pawn(&mut g, COLOR_BLACK);
@@ -1776,6 +1778,16 @@ fn abeta(
         */
         for el in &mut s {
             debug_assert!(g.board[el.si as usize] != VOID_ID);
+
+            // Killer Move Check:
+            let mut killer_bonus = 0i16;
+            if el.df == 0 { // Only consider non-captures for killer moves
+                if (el.si == g.killer_moves[cup as usize][0].0 && el.di == g.killer_moves[cup as usize][0].1) ||
+                   (el.si == g.killer_moves[cup as usize][1].0 && el.di == g.killer_moves[cup as usize][1].1) {
+                    killer_bonus = 500; // Arbitrary high bonus to prioritize killers
+                }
+            }
+
             // guessed ratings of the moves
             el.eval_depth = -3; // mark as unevaluated -- actually -1, but -3 works as special marker
             if cfg!(debug_assertions) {
@@ -1788,7 +1800,8 @@ fn abeta(
             el.s = FIGURE_VALUE[el.promote_to.abs() as usize] + FIGURE_VALUE[el.df.abs() as usize]
                 - FIGURE_VALUE[el.sf.abs() as usize] / 2 * (el.df != 0) as i16
                 + g.freedom[(6 + el.sf) as usize][(0 + el.di) as usize]
-                - g.freedom[(6 + el.sf) as usize][(0 + el.si) as usize];
+                - g.freedom[(6 + el.sf) as usize][(0 + el.si) as usize]
+                + killer_bonus; // Add killer bonus here
         }
         let h = s.len();
         ixsort(&mut s, h);
@@ -2133,6 +2146,14 @@ fn abeta(
                 return result;
             }
             if m.score >= beta {
+                // Store killer move if it's a quiet move
+                if el.df == 0 && cup < MAX_DEPTH as i64 {
+                    // Shift existing killer
+                    g.killer_moves[cup as usize][1] = g.killer_moves[cup as usize][0];
+                    // Add new killer
+                    g.killer_moves[cup as usize][0] = (el.si, el.di);
+                }
+
                 // debug_assert!(is_sorted2(hash_res.kks, hash_res_kks_high + 1, hash_res.kks.high)) // no, can be more than one partition
                 ixsort(&mut hash_res.kks, hash_res_kks_high + 1);
                 //debug_assert!(is_sorted(&hash_res.kks, hash_res_kks_high as usize));
@@ -2229,6 +2250,9 @@ fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
 
     // Reset statistics for this search
     reset_statistics(g);
+
+    // Reset killer moves for the new search
+    g.killer_moves = [[(0, 0); 2]; MAX_DEPTH + 1];
 
     // Start the search with a properly defined result
     let mut result = Move {

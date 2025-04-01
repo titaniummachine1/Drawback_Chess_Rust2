@@ -2384,84 +2384,70 @@ pub fn get_board(g: &Game) -> Board {
     return g.board;
 }
 
+// Unicode pieces for display
+const UNICODE_PIECES: [&str; 13] = [
+    "♚", "♛", "♜", "♝", "♞", "♟", // Black
+    "", // Empty
+    "♙", "♘", "♗", "♖", "♕", "♔", // White
+];
+
 // call this after do_move()
 pub fn move_to_str(g: &Game, si: Position, di: Position, flag: i32) -> String {
-    //when true: // move_is_valid(si, di): // avoid unnecessary expensive test
-    let mut result: String;
-    if true {
-        if g.board[di as usize].abs() == KING_ID && (di - si).abs() == 2 {
-            result = String::from(if col(di) == 1 { "o-o" } else { "o-o-o" });
-        } else {
-            result = String::from(FIG_STR[g.board[di as usize].abs() as usize]);
-            result.push(col_str(col(si)));
-            result.push(row_str(row(si)));
-            result.push(if flag == FLAG_CAPTURE || flag == FLAG_PROCAP {
-                'x'
-            } else {
-                '-'
-            });
-            result.push(col_str(col(di)));
-            result.push(row_str(row(di)));
-            if flag == FLAG_EP || flag == FLAG_PROCAP {
-                result.push_str(" e.p.");
-            }
-        }
-        if in_check(
-            &g,
-            king_pos(&g, (-signum(g.board[di as usize])) as Color),
-            (-signum(g.board[di as usize])) as Color,
-            true,
-        ) {
-            result.push_str(" +");
-        }
-    } else {
-        result = String::from("invalid move");
+    let piece_moved = g.board[di as usize]; // Piece is already at destination
+    let piece_type = piece_moved.abs();
+    let is_capture = flag == FLAG_CAPTURE || flag == FLAG_PROCAP || flag == FLAG_EP;
+    
+    // Handle castling first
+    if piece_type == KING_ID && (di - si).abs() == 2 {
+        return String::from(if col(di) < col(si) { "O-O-O" } else { "O-O" });
     }
-    result
+    
+    let mut pgn = String::new();
+    
+    // Add piece character (skip for pawns)
+    if piece_type != PAWN_ID {
+        pgn.push_str(UNICODE_PIECES[(piece_moved + 6) as usize]);
+    }
+    
+    // Add source square if needed (basic version, no ambiguity check)
+    // pgn.push_str(&format!("{}{}", col_str(col(si)), row_str(row(si))));
+    
+    // Add capture symbol
+    if is_capture {
+        if piece_type == PAWN_ID { // Pawn captures include source file
+             pgn.push(col_str(col(si)));
+        }
+        pgn.push('x');
+    }
+    
+    // Add destination square
+    pgn.push(col_str(col(di)));
+    pgn.push(row_str(row(di)));
+    
+    // Add promotion
+    if flag == FLAG_PROMOTION || flag == FLAG_PROCAP {
+        // Assuming Queen promotion for now, as engine does
+        pgn.push_str(&format!("={}", UNICODE_PIECES[(QUEEN_ID * signum(piece_moved) + 6) as usize]));
+    }
+    
+    // Check for check/checkmate (check only for now)
+    let opponent_color = opp_color(signum(piece_moved));
+    let opponent_king_pos = king_pos(&g, opponent_color);
+    if in_check(&g, opponent_king_pos, opponent_color, true) {
+         // Checkmate detection happens later based on score
+         pgn.push('+');
+    }
+    
+    pgn
 }
 
+// Keep _m_2_str for internal debugging if needed, or remove it.
+// We'll use the new move_to_str for the UI.
+/*
 pub fn _m_2_str(g: &Game, si: Position, di: Position) -> String {
-    let mut result: String;
-    let mut flag: i32 = 0;
-    if !is_void_at(&g, di) {
-        flag = FLAG_CAPTURE;
-    }
-    if base_row(di) && is_a_pawn_at(&g, si) {
-        flag = if flag == FLAG_CAPTURE {
-            FLAG_PROCAP
-        } else {
-            FLAG_PROMOTION
-        }
-    } else if is_a_pawn_at(&g, si) && is_void_at(&g, di) && odd(di - si) {
-        flag = FLAG_EP
-    }
-    if true {
-        // move_is_valid(si, di): // avoid unnecessary expensive test
-        if g.board[di as usize].abs() == KING_ID && (di - si).abs() == 2 {
-            result = String::from(if col(di) == 1 { "o-o" } else { "o-o-o" });
-        } else {
-            result = String::from(FIG_STR[g.board[si as usize].abs() as usize]);
-            result.push(col_str(col(si)));
-            result.push(row_str(row(si)));
-            result.push(if flag == FLAG_CAPTURE || flag == FLAG_PROCAP {
-                'x'
-            } else {
-                '-'
-            });
-            result.push(col_str(col(di)));
-            result.push(row_str(row(di)));
-            if flag == FLAG_EP || flag == FLAG_PROCAP {
-                result.push_str(" e.p.");
-            }
-            // works only after doing the move
-            //if in_check(king_pos((-signum(board[di])).Color), (-signum(board[di])).Color):
-            //  result.add(" +")
-        }
-    } else {
-        result = String::from("invalid move");
-    }
-    result
+    // ... (original implementation)
 }
+*/
 
 // Endgame = no pawns, weaker side has no queen, no rook and not two bishops.
 fn setup_endgame(g: &mut Game) -> bool {

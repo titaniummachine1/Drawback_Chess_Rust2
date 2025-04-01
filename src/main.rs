@@ -64,7 +64,9 @@ fn main() -> Result<(), eframe::Error> {
 
 struct MyApp {
     game: Arc<Mutex<engine::Game>>,
-    msg: String,
+    last_move_msg: String,
+    last_score_msg: String,
+    last_depth_msg: String,
     rotated: bool,
     time_per_move: f32,
     tagged: engine::Board,
@@ -82,7 +84,9 @@ impl Default for MyApp {
     fn default() -> Self {
         Self {
             game: Arc::new(Mutex::new(engine::new_game())),
-            msg: "DrawbackChess2".to_owned(),
+            last_move_msg: "DrawbackChess2".to_owned(),
+            last_score_msg: "".to_owned(),
+            last_depth_msg: "".to_owned(),
             time_per_move: 1.5,
             rotated: true,
             tagged: [0; 64],
@@ -93,7 +97,7 @@ impl Default for MyApp {
             new_game: true,
             engine_plays_white: false,
             engine_plays_black: true,
-            rx: None, // Initialize receiver as None
+            rx: None,
         }
     }
 }
@@ -107,6 +111,9 @@ impl eframe::App for MyApp {
                 self.new_game = false;
                 self.state = STATE_UZ;
                 self.tagged = [0; 64];
+                self.last_move_msg = "New Game Started".to_owned();
+                self.last_score_msg = "".to_owned();
+                self.last_depth_msg = "".to_owned();
             }
             self.bbb = engine::get_board(mutex);
             mutex.secs_per_move = self.time_per_move;
@@ -117,9 +124,17 @@ impl eframe::App for MyApp {
         egui::SidePanel::left("side_panel")
             .min_width(200.0)
             .show(ctx, |ui| {
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::Title(self.msg.clone()));
-                ui.heading(self.msg.clone());
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(
+                    "DrawbackChess2".to_owned(),
+                ));
+                ui.heading(&self.last_move_msg);
+                if !self.last_score_msg.is_empty() {
+                    ui.label(&self.last_score_msg).on_hover_text("Position evaluation in centipawns. Positive values favor White, negative values favor Black.");
+                }
+                if !self.last_depth_msg.is_empty() {
+                    ui.label(&self.last_depth_msg).on_hover_text("Search depth reached by the engine for the last evaluation.");
+                }
+                ui.separator();
                 ui.add(egui::Slider::new(&mut self.time_per_move, 0.1..=5.0).text("Sec/move"));
                 if ui.button("Rotate").clicked() {
                     self.rotated ^= true;
@@ -244,7 +259,9 @@ impl eframe::App for MyApp {
             if h == p1 as i32
                 || !engine::move_is_valid2(&mut self.game.lock().unwrap(), h as i64, p1 as i64)
             {
-                self.msg = "invalid move, ignored.".to_owned();
+                self.last_move_msg = "Invalid move, ignored.".to_owned();
+                self.last_score_msg = "".to_owned();
+                self.last_depth_msg = "".to_owned();
                 self.tagged = [0; 64];
                 self.state = STATE_UZ;
                 return;
@@ -256,7 +273,9 @@ impl eframe::App for MyApp {
             if self.rotated {
                 self.tagged.reverse();
             }
-            self.msg = engine::move_to_str(&mut self.game.lock().unwrap(), h as i8, p1 as i8, flag);
+            self.last_move_msg = engine::move_to_str(&mut self.game.lock().unwrap(), h as i8, p1 as i8, flag);
+            self.last_score_msg = "".to_owned();
+            self.last_depth_msg = "".to_owned();
             self.state = STATE_UZ;
         } else if self.state == STATE_U2 {
             self.state = STATE_U3;
@@ -282,21 +301,21 @@ impl eframe::App for MyApp {
                         m.dst as i8,
                         false,
                     );
-                    self.msg = engine::move_to_str(
+                    self.last_move_msg = engine::move_to_str(
                         &mut self.game.lock().unwrap(),
                         m.src as i8,
                         m.dst as i8,
                         flag,
-                    ) + &format!(" (score: {} at depth {})", m.score, final_depth);
+                    );
+                    self.last_score_msg = format!("Score: {:.2}", m.score as f32 / 100.0);
+                    self.last_depth_msg = format!("Depth: {}", final_depth);
+                    
                     if m.score == engine::KING_VALUE as i64 {
-                        self.msg.push_str(" Checkmate, game terminated!");
+                        self.last_move_msg.push_str("# Checkmate!");
                         self.state = STATE_UX;
                         return;
                     } else if m.score > engine::KING_VALUE_DIV_2 as i64 {
-                        self.msg.push_str(&format!(
-                            " Checkmate in {}",
-                            (engine::KING_VALUE as i64 - m.score) / 2
-                        ));
+                        self.last_depth_msg += &format!(" (Mate in {})", (engine::KING_VALUE as i64 - m.score) / 2);
                     }
                     self.state = STATE_UZ;
                     self.rx = None;

@@ -770,7 +770,7 @@ fn p(_b: Board) {
         }
         println!();
     }
-    
+
     #[cfg(not(feature = "drawbackChessDebug"))]
     {
         // Empty implementation when the feature is disabled
@@ -1260,31 +1260,33 @@ pub struct Move {
 // result is for White
 fn plain_evaluate_board(g: &Game) -> i16 {
     let mut result: i16 = 0;
-    
+
     // Calculate game phase for midgame/endgame interpolation
     let phase = calculate_game_phase(&g.board);
-    
+
     // Evaluate material and position for each piece
     for (square, piece) in g.board.iter().enumerate() {
-        if *piece == 0 { continue; } // Skip empty squares
-        
+        if *piece == 0 {
+            continue;
+        } // Skip empty squares
+
         let piece_type = piece.abs() as i64;
         let is_white = *piece > 0;
         let sign = if is_white { 1 } else { -1 };
-        
+
         // Get piece value (interpolated between midgame and endgame)
         let piece_value = get_interpolated_piece_value(piece_type, phase);
-        
+
         // Get piece-square table value
         let position_value = get_piece_square_value(piece_type, square, is_white, phase);
-        
+
         // Get mobility/freedom value (from existing code)
         let mobility_value = g.freedom[(6 + *piece) as usize][square];
-        
+
         // Combine all values for this piece
         result += (piece_value + position_value + mobility_value) * sign;
     }
-    
+
     // Castling rights evaluation (unchanged from original)
     if g.has_moved.contains(WK3) {
         result -= 4;
@@ -1306,12 +1308,12 @@ fn plain_evaluate_board(g: &Game) -> i16 {
             result += 2;
         }
     }
-    
+
     #[cfg(debug_assertions)]
     if g.move_counter < 2 {
         println!("Evaluation: {}", result);
     }
-    
+
     result
 }
 
@@ -1559,13 +1561,13 @@ fn abeta(
         score: LOWEST_SCORE as i64,
         ..Default::default()
     };
-    
+
     // Hard time limit check - quit search if we've reached the target time
     // Using time_0 as that's our target thinking time set in the reply function
     if g.start_time.elapsed() > g.time_0 {
         return result; // Return invalid move if time's up
     }
-    
+
     debug_assert!(alpha_0 < beta);
     debug_inc(&mut g.ab_call);
     debug_assert!(MAX_DEPTH == 15);
@@ -1594,12 +1596,12 @@ fn abeta(
     back = g.board; // test board integrity
     let v_depth = v_depth - V_RATIO;
     let encoded_board = encode_board(&g, color);
-    
+
     // Another time check before expensive transposition table lookup
     if g.start_time.elapsed() > g.time_0 {
         return result;
     }
-    
+
     let hash_pos = get_tte(g, encoded_board);
     if hash_pos >= 0 {
         hash_res = g.tt[hash_pos as usize].res.clone(); // no way to avoid the clone() here
@@ -1642,7 +1644,7 @@ fn abeta(
         init_hr(&mut hash_res);
         hash_res.queen_pos = -1;
     }
-    
+
     // Time check before expensive move generation
     if g.start_time.elapsed() > g.time_0 {
         // Create default invalid move to return
@@ -2195,27 +2197,27 @@ fn _check_mate_in(score: i64) -> i64 {
 
 fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
     debug_assert!((0.1..10.0).contains(&g.secs_per_move));
-    
+
     // Don't override time controls set in reply()
     // The start_time is already set in the reply function
-    
+
     // Reset statistics for this search
     reset_statistics(g);
-    
+
     // Start the search with a properly defined result
     let mut result = Move {
         state: STATE_NO_VALID_MOVE,
         score: LOWEST_SCORE as i64,
         ..Default::default()
     };
-    
+
     // Only proceed if we haven't exceeded time limit already
     if g.start_time.elapsed() > g.time_4 {
         #[cfg(debug_assertions)]
         println!("Time limit exceeded before starting search");
         return result;
     }
-    
+
     // Call the actual search function
     result = abeta(
         g,
@@ -2227,12 +2229,12 @@ fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
         20,
         ep_pos,
     );
-    
+
     //when defined(drawbackChessDebug):
     if cfg!(feature = "drawbackChessDebug") {
         write_statistics(&g);
     }
-    
+
     result
 }
 
@@ -2369,8 +2371,6 @@ pub fn move_is_valid2(g: &mut Game, si: i64, di: i64) -> bool {
     signum(g.board[si as usize]) as Color == next && tag(g, si).iter().any(|&it| it.di == di as i8)
 }
 
-const FIG_STR: [&str; 7] = ["  ", "  ", "N_", "B_", "R_", "Q_", "K_"];
-
 fn col_str(c: Col) -> char {
     char::from_u32('H' as u32 - c as u32).unwrap()
 }
@@ -2386,7 +2386,7 @@ pub fn get_board(g: &Game) -> Board {
 // Unicode pieces for display
 const UNICODE_PIECES: [&str; 13] = [
     "♚", "♛", "♜", "♝", "♞", "♟", // Black
-    "", // Empty
+    "",  // Empty
     "♙", "♘", "♗", "♖", "♕", "♔", // White
 ];
 
@@ -2395,89 +2395,49 @@ pub fn move_to_str(g: &Game, si: Position, di: Position, flag: i32) -> String {
     let piece_moved = g.board[di as usize]; // Piece is already at destination
     let piece_type = piece_moved.abs();
     let is_capture = flag == FLAG_CAPTURE || flag == FLAG_PROCAP || flag == FLAG_EP;
-    
+
     // Handle castling first
     if piece_type == KING_ID && (di - si).abs() == 2 {
         return String::from(if col(di) < col(si) { "O-O-O" } else { "O-O" });
     }
-    
+
     let mut pgn = String::new();
-    
+
     // Add piece character (including pawns now)
     pgn.push_str(UNICODE_PIECES[(piece_moved + 6) as usize]);
-    
+
     // Add source square file for pawn captures
     if piece_type == PAWN_ID && is_capture {
         pgn.push(col_str(col(si)));
     }
-    
+
     // Add capture symbol
     if is_capture {
         pgn.push('x');
     }
-    
+
     // Add destination square
     pgn.push(col_str(col(di)));
     pgn.push(row_str(row(di)));
-    
+
     // Add promotion
     if flag == FLAG_PROMOTION || flag == FLAG_PROCAP {
         // Assuming Queen promotion for now, as engine does
-        pgn.push_str(&format!("={}", UNICODE_PIECES[(QUEEN_ID * signum(piece_moved) + 6) as usize]));
+        pgn.push_str(&format!(
+            "={}",
+            UNICODE_PIECES[(QUEEN_ID * signum(piece_moved) + 6) as usize]
+        ));
     }
-    
+
     // Check for check/checkmate (check only for now)
     let opponent_color = opp_color(signum(piece_moved));
     let opponent_king_pos = king_pos(&g, opponent_color);
     if in_check(&g, opponent_king_pos, opponent_color, true) {
-         // Checkmate detection happens later based on score
-         pgn.push('+');
+        // Checkmate detection happens later based on score
+        pgn.push('+');
     }
-    
-    pgn
-}
 
-pub fn _m_2_str(g: &Game, si: Position, di: Position) -> String {
-    let mut result: String;
-    let mut flag: i32 = 0;
-    if !is_void_at(&g, di) {
-        flag = FLAG_CAPTURE;
-    }
-    if base_row(di) && is_a_pawn_at(&g, si) {
-        flag = if flag == FLAG_CAPTURE {
-            FLAG_PROCAP
-        } else {
-            FLAG_PROMOTION
-        }
-    } else if is_a_pawn_at(&g, si) && is_void_at(&g, di) && odd(di - si) {
-        flag = FLAG_EP
-    }
-    if true {
-        // move_is_valid(si, di): // avoid unnecessary expensive test
-        if g.board[di as usize].abs() == KING_ID && (di - si).abs() == 2 {
-            result = String::from(if col(di) == 1 { "o-o" } else { "o-o-o" });
-        } else {
-            result = String::from(FIG_STR[g.board[si as usize].abs() as usize]);
-            result.push(col_str(col(si)));
-            result.push(row_str(row(si)));
-            result.push(if flag == FLAG_CAPTURE || flag == FLAG_PROCAP {
-                'x'
-            } else {
-                '-'
-            });
-            result.push(col_str(col(di)));
-            result.push(row_str(row(di)));
-            if flag == FLAG_EP || flag == FLAG_PROCAP {
-                result.push_str(" e.p.");
-            }
-            // works only after doing the move
-            //if in_check(king_pos((-signum(board[di])).Color), (-signum(board[di])).Color):
-            //  result.add(" +")
-        }
-    } else {
-        result = String::from("invalid move");
-    }
-    result
+    pgn
 }
 
 // Endgame = no pawns, weaker side has no queen, no rook and not two bishops.
@@ -2539,49 +2499,49 @@ fn setup_endgame(g: &mut Game) -> bool {
 }
 
 pub fn reply(g: &mut Game) -> (Move, usize) {
-    // Initialize with a default invalid move 
+    // Initialize with a default invalid move
     let mut move_result = Move {
         state: STATE_NO_VALID_MOVE,
         score: LOWEST_SCORE as i64,
         ..Default::default()
     };
-    
+
     // Determine the color to play
     let color = ((g.move_counter as i64 + 1) % 2) * 2 - 1;
-    
+
     // Check if we're in endgame
     if setup_endgame(g) {
         #[cfg(debug_assertions)]
         println!("endgame");
         g.is_endgame = true;
     }
-    
+
     // Reset transposition table entries
     for el in &mut g.tt {
         el.res.pri = i64::MIN
     }
-    
+
     // Set up timing controls
     g.start_time = Instant::now();
-    
-    // Timing strategy: 
+
+    // Timing strategy:
     // - Always use at least minimum time to get a decent move
     // - Never exceed maximum time to avoid UI lag
     let min_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.2); // At least 20% of allocated time
     let target_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.8); // Target 80% of allocated time
     let max_thinking_time = Duration::from_secs_f32(g.secs_per_move * 0.95); // Never exceed 95% of time
-    
+
     // Store time limits in the game struct for abeta to access
     g.time_0 = target_thinking_time;
     g.time_4 = max_thinking_time;
-    
+
     // Init starting depth
     let mut depth = 0;
     let mut result: Move;
-    
+
     // Generate all possible moves directly to verify there are legal moves available
     let king_pos = king_pos(g, color);
-    
+
     // First collect all piece positions and types that could have moves
     let mut piece_positions: Vec<(usize, i64)> = Vec::new();
     for (pos, &piece) in g.board.iter().enumerate() {
@@ -2589,7 +2549,7 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             piece_positions.push((pos, piece as i64));
         }
     }
-    
+
     // Now check if any of these pieces have legal moves
     let mut has_valid_move = false;
     for (pos, _) in piece_positions {
@@ -2599,7 +2559,7 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             break;
         }
     }
-    
+
     if !has_valid_move {
         // Game is over - either checkmate or stalemate
         if in_check(g, king_pos, color, true) {
@@ -2613,7 +2573,7 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
         }
         return (move_result, depth);
     }
-    
+
     // Iterative deepening loop
     while depth < MAX_DEPTH {
         // Check if we've already exceeded max time before starting next depth
@@ -2622,23 +2582,23 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             println!("Time limit reached before depth {}", depth + 1);
             break;
         }
-        
+
         depth += 1;
-        
+
         // Search to the current depth
         result = alphabeta(g, color, depth as i64, g.pjm);
-        
+
         // If we found a valid move, update our best move
         if result.score != LOWEST_SCORE as i64 {
             move_result = result;
-            
+
             #[cfg(debug_assertions)]
             println!(
                 "Depth: {} {}{} -> {}{} score {} ({:.2} s)", // Show src/dst directly
                 depth,
-                col_str(col(result.src as i8)), 
+                col_str(col(result.src as i8)),
                 row_str(row(result.src as i8)),
-                col_str(col(result.dst as i8)), 
+                col_str(col(result.dst as i8)),
                 row_str(row(result.dst as i8)),
                 result.score,
                 g.start_time.elapsed().as_millis() as f64 * 1e-3
@@ -2653,7 +2613,7 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                 // Try a random legal move if we still don't have anything
                 // First, collect all legal moves
                 let mut legal_moves: Vec<(i8, i8)> = Vec::new();
-                
+
                 // First collect piece positions to avoid borrow issues
                 let mut piece_positions: Vec<(usize, i64)> = Vec::new();
                 for (pos, &piece) in g.board.iter().enumerate() {
@@ -2661,14 +2621,14 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                         piece_positions.push((pos, piece as i64));
                     }
                 }
-                
+
                 // Now check each piece for legal moves
                 for (pos, _) in piece_positions {
                     for m in tag(g, pos as i64) {
                         legal_moves.push((pos as i8, m.di));
                     }
                 }
-                
+
                 if !legal_moves.is_empty() {
                     // Pick a random legal move
                     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2678,10 +2638,10 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                         .as_millis() as usize;
                     let random_idx = seed % legal_moves.len();
                     let (src, dst) = legal_moves[random_idx];
-                    
+
                     #[cfg(debug_assertions)]
                     println!("Using random legal move as fallback");
-                    
+
                     move_result.src = src as i64;
                     move_result.dst = dst as i64;
                     move_result.state = STATE_PLAYING;
@@ -2692,16 +2652,16 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                 }
             }
         }
-        
+
         // Early termination conditions
-        
+
         // 1. Found checkmate
         if result.score.abs() > SURE_CHECKMATE as i64 {
             #[cfg(debug_assertions)]
             println!("Found checkmate, terminating search");
             break;
         }
-        
+
         // 2. Exceeded minimum thinking time and completed at least depth 4
         if g.start_time.elapsed() > min_thinking_time && depth >= 4 {
             // Stop if we've found a winning position
@@ -2711,14 +2671,14 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
                 break;
             }
         }
-        
+
         // 3. Exceeded target thinking time
         if g.start_time.elapsed() > target_thinking_time {
             #[cfg(debug_assertions)]
             println!("Reached target thinking time");
             break;
         }
-        
+
         // 4. Exceeded maximum thinking time
         if g.start_time.elapsed() > max_thinking_time {
             #[cfg(debug_assertions)]
@@ -2726,10 +2686,14 @@ pub fn reply(g: &mut Game) -> (Move, usize) {
             break;
         }
     }
-    
+
     #[cfg(debug_assertions)]
-    println!("Final depth: {}, time: {:.2}s", depth, g.start_time.elapsed().as_secs_f32());
-    
+    println!(
+        "Final depth: {}, time: {:.2}s",
+        depth,
+        g.start_time.elapsed().as_secs_f32()
+    );
+
     return (move_result, depth);
 }
 
@@ -2839,7 +2803,7 @@ when false:
 // Calculate the game phase based on remaining pieces (simplified approach)
 fn calculate_game_phase(board: &Board) -> f32 {
     let mut phase_value = 0;
-    
+
     // Count material to determine game phase
     for piece in board {
         let abs_piece_type = piece.abs() as i64;
@@ -2852,14 +2816,14 @@ fn calculate_game_phase(board: &Board) -> f32 {
             _ => {} // Pawns and kings don't contribute to phase calculation
         }
     }
-    
+
     // Normalize to 0.0-1.0 range (1.0 is midgame, 0.0 is endgame)
     let max_phase = 24; // Maximum phase value at start of game
     let phase = f32::min(phase_value as f32 / max_phase as f32, 1.0);
-    
+
     #[cfg(debug_assertions)]
     println!("Game phase: {:.2} (material: {})", phase, phase_value);
-    
+
     phase
 }
 
@@ -2875,7 +2839,7 @@ fn get_interpolated_piece_value(piece_type: i64, phase: f32) -> i16 {
         KING_ID => (KING_VALUE as i16, KING_VALUE as i16),
         _ => (0, 0),
     };
-    
+
     // Interpolate between midgame and endgame values
     let value = (mid_value as f32 * phase + end_value as f32 * (1.0 - phase)) as i16;
     value
@@ -2885,138 +2849,80 @@ fn get_interpolated_piece_value(piece_type: i64, phase: f32) -> i16 {
 fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase: f32) -> i16 {
     // Piece-square tables for midgame (white perspective)
     static MG_PAWN_TABLE: [i16; 64] = [
-         0,   0,   0,   0,   0,   0,   0,   0,
-        50,  50,  50,  50,  50,  50,  50,  50,
-        10,  10,  20,  30,  30,  20,  10,  10,
-         5,   5,  10,  25,  25,  10,   5,   5,
-         0,   0,   0,  20,  20,   0,   0,   0,
-         5,  -5, -10,   0,   0, -10,  -5,   5,
-         5,  10,  10, -20, -20,  10,  10,   5,
-         0,   0,   0,   0,   0,   0,   0,   0
+        0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5,
+        5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10,
+        -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    
+
     // Piece-square tables for endgame (white perspective)
     static EG_PAWN_TABLE: [i16; 64] = [
-         0,   0,   0,   0,   0,   0,   0,   0,
-        80,  80,  80,  80,  80,  80,  80,  80,
-        50,  50,  50,  50,  50,  50,  50,  50,
-        30,  30,  30,  30,  30,  30,  30,  30,
-        20,  20,  20,  20,  20,  20,  20,  20,
-        10,  10,  10,  10,  10,  10,  10,  10,
-        10,  10,  10,  10,  10,  10,  10,  10,
-         0,   0,   0,   0,   0,   0,   0,   0
+        0, 0, 0, 0, 0, 0, 0, 0, 80, 80, 80, 80, 80, 80, 80, 80, 50, 50, 50, 50, 50, 50, 50, 50, 30,
+        30, 30, 30, 30, 30, 30, 30, 20, 20, 20, 20, 20, 20, 20, 20, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    
+
     static MG_KNIGHT_TABLE: [i16; 64] = [
-        -50, -40, -30, -30, -30, -30, -40, -50,
-        -40, -20,   0,   0,   0,   0, -20, -40,
-        -30,   0,  10,  15,  15,  10,   0, -30,
-        -30,   5,  15,  20,  20,  15,   5, -30,
-        -30,   0,  15,  20,  20,  15,   0, -30,
-        -30,   5,  10,  15,  15,  10,   5, -30,
-        -40, -20,   0,   5,   5,   0, -20, -40,
-        -50, -40, -30, -30, -30, -30, -40, -50
+        -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15,
+        10, 0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15,
+        15, 10, 5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
     ];
-    
+
     static EG_KNIGHT_TABLE: [i16; 64] = [
-        -50, -40, -30, -30, -30, -30, -40, -50,
-        -40, -20,   0,   0,   0,   0, -20, -40,
-        -30,   0,  10,  15,  15,  10,   0, -30,
-        -30,   5,  15,  20,  20,  15,   5, -30,
-        -30,   0,  15,  20,  20,  15,   0, -30,
-        -30,   5,  10,  15,  15,  10,   5, -30,
-        -40, -20,   0,   5,   5,   0, -20, -40,
-        -50, -40, -30, -30, -30, -30, -40, -50
+        -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15,
+        10, 0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15,
+        15, 10, 5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
     ];
-    
+
     static MG_BISHOP_TABLE: [i16; 64] = [
-        -20, -10, -10, -10, -10, -10, -10, -20,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -10,   0,  10,  10,  10,  10,   0, -10,
-        -10,   5,   5,  10,  10,   5,   5, -10,
-        -10,   0,   5,  10,  10,   5,   0, -10,
-        -10,  10,  10,  10,  10,  10,  10, -10,
-        -10,  10,   0,   0,   0,   0,  10, -10,
-        -20, -10, -10, -10, -10, -10, -10, -20
+        -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 10, 10, 10, 10,
+        0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 5, 10, 10, 5, 0, -10, -10, 10, 10, 10, 10,
+        10, 10, -10, -10, 10, 0, 0, 0, 0, 10, -10, -20, -10, -10, -10, -10, -10, -10, -20,
     ];
-    
+
     static EG_BISHOP_TABLE: [i16; 64] = [
-        -20, -10, -10, -10, -10, -10, -10, -20,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -10,   0,  10,  10,  10,  10,   0, -10,
-        -10,   5,   5,  10,  10,   5,   5, -10,
-        -10,   0,   5,  10,  10,   5,   0, -10,
-        -10,   5,   5,  10,  10,   5,   5, -10,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -20, -10, -10, -10, -10, -10, -10, -20
+        -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 10, 10, 10, 10,
+        0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 5, 10, 10, 5, 0, -10, -10, 5, 5, 10, 10, 5,
+        5, -10, -10, 0, 0, 0, 0, 0, 0, -10, -20, -10, -10, -10, -10, -10, -10, -20,
     ];
-    
+
     static MG_ROOK_TABLE: [i16; 64] = [
-         0,   0,   0,   0,   0,   0,   0,   0,
-         5,  10,  10,  10,  10,  10,  10,   5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-         0,   0,   0,   5,   5,   0,   0,   0
+        0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0,
+        0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0,
+        -5, 0, 0, 0, 5, 5, 0, 0, 0,
     ];
-    
+
     static EG_ROOK_TABLE: [i16; 64] = [
-         0,   0,   0,   0,   0,   0,   0,   0,
-         5,  10,  10,  10,  10,  10,  10,   5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-        -5,   0,   0,   0,   0,   0,   0,  -5,
-         0,   0,   0,   0,   0,   0,   0,   0
+        0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0,
+        0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0,
+        -5, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    
+
     static MG_QUEEN_TABLE: [i16; 64] = [
-        -20, -10, -10,  -5,  -5, -10, -10, -20,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -10,   0,   5,   5,   5,   5,   0, -10,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-          0,   0,   5,   5,   5,   5,   0,  -5,
-        -10,   5,   5,   5,   5,   5,   0, -10,
-        -10,   0,   5,   0,   0,   0,   0, -10,
-        -20, -10, -10,  -5,  -5, -10, -10, -20
+        -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0,
+        -10, -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0,
+        5, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20,
     ];
-    
+
     static EG_QUEEN_TABLE: [i16; 64] = [
-        -20, -10, -10,  -5,  -5, -10, -10, -20,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -10,   0,   5,   5,   5,   5,   0, -10,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-          0,   0,   5,   5,   5,   5,   0,  -5,
-        -10,   0,   5,   5,   5,   5,   0, -10,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -20, -10, -10,  -5,  -5, -10, -10, -20
+        -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0,
+        -10, -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 0, 5, 5, 5, 5, 0, -10, -10, 0,
+        0, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20,
     ];
-    
+
     static MG_KING_TABLE: [i16; 64] = [
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -20, -30, -30, -40, -40, -30, -30, -20,
-        -10, -20, -20, -20, -20, -20, -20, -10,
-         20,  20,   0,   0,   0,   0,  20,  20,
-         20,  30,  10,   0,   0,  10,  30,  20
+        -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40,
+        -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40,
+        -40, -30, -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20,
+        30, 10, 0, 0, 10, 30, 20,
     ];
-    
+
     static EG_KING_TABLE: [i16; 64] = [
-        -50, -40, -30, -20, -20, -30, -40, -50,
-        -30, -20, -10,   0,   0, -10, -20, -30,
-        -30, -10,  20,  30,  30,  20, -10, -30,
-        -30, -10,  30,  40,  40,  30, -10, -30,
-        -30, -10,  30,  40,  40,  30, -10, -30,
-        -30, -10,  20,  30,  30,  20, -10, -30,
-        -30, -30,   0,   0,   0,   0, -30, -30,
-        -50, -30, -30, -30, -30, -30, -30, -50
+        -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30, -30, -10, 20,
+        30, 30, 20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10,
+        -30, -30, -10, 20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30,
+        -30, -30, -30, -30, -50,
     ];
-    
+
     // Select the tables based on piece type
     let (mg_table, eg_table) = match piece_type {
         PAWN_ID => (&MG_PAWN_TABLE, &EG_PAWN_TABLE),
@@ -3027,25 +2933,24 @@ fn get_piece_square_value(piece_type: i64, square: usize, is_white: bool, phase:
         KING_ID => (&MG_KING_TABLE, &EG_KING_TABLE),
         _ => return 0,
     };
-    
+
     // Get square index, flipped for black pieces
     let idx = if is_white {
-        square 
+        square
     } else {
         // Flip square for black perspective (mirror vertically)
         let rank = square / 8;
         let file = square % 8;
         (7 - rank) * 8 + file
     };
-    
+
     // Interpolate between midgame and endgame tables
     let value = (mg_table[idx] as f32 * phase + eg_table[idx] as f32 * (1.0 - phase)) as i16;
-    
+
     // Scale down PST value to not overwhelm material value
     // This factor can be tuned based on engine behavior
     let pst_scale_factor = 0.5;
     let scaled_value = (value as f32 * pst_scale_factor) as i16;
-    
+
     scaled_value
-                }
-                
+}

@@ -75,7 +75,7 @@ struct MyApp {
     p0: i32,
     new_game: bool,
     bbb: engine::Board,
-    rx: Option<mpsc::Receiver<engine::Move>>,
+    rx: Option<mpsc::Receiver<(engine::Move, i32)>>,
 }
 
 impl Default for MyApp {
@@ -260,17 +260,16 @@ impl eframe::App for MyApp {
             self.state = STATE_UZ;
         } else if self.state == STATE_U2 {
             self.state = STATE_U3;
-            let (tx, rx) = mpsc::channel(); // Create a new channel
-            self.rx = Some(rx); // Store the receiver in the struct
+            let (tx, rx) = mpsc::channel::<(engine::Move, i32)>();
+            self.rx = Some(rx);
             let game_clone = self.game.clone();
             thread::spawn(move || {
-                let m = engine::reply(&mut game_clone.lock().unwrap());
-                tx.send(m).unwrap();
+                let (m, final_depth) = engine::reply(&mut game_clone.lock().unwrap());
+                tx.send((m, final_depth as i32)).unwrap();
             });
         } else if self.state == STATE_U3 {
-            // Check if the thread has finished
             if let Some(rx) = &self.rx {
-                if let Ok(m) = rx.try_recv() {
+                if let Ok((m, final_depth)) = rx.try_recv() {
                     self.tagged = [0; 64];
                     self.tagged[m.src as usize] = 2;
                     self.tagged[m.dst as usize] = 2;
@@ -288,7 +287,7 @@ impl eframe::App for MyApp {
                         m.src as i8,
                         m.dst as i8,
                         flag,
-                    ) + &format!(" (score: {})", m.score);
+                    ) + &format!(" (score: {} at depth {})", m.score, final_depth);
                     if m.score == engine::KING_VALUE as i64 {
                         self.msg.push_str(" Checkmate, game terminated!");
                         self.state = STATE_UX;
@@ -300,11 +299,7 @@ impl eframe::App for MyApp {
                         ));
                     }
                     self.state = STATE_UZ;
-                    self.rx = None; // Reset the receiver
-                } else {
-                    // If the thread has not finished, keep the state as STATE_U3
-                    // self.state = STATE_U3;
-                    // ctx.request_repaint_after(Duration::from_millis(100));
+                    self.rx = None;
                 }
             }
         }

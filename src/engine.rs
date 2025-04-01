@@ -2521,7 +2521,7 @@ fn setup_endgame(g: &mut Game) -> bool {
     return true;
 }
 
-pub fn reply(g: &mut Game) -> Move {
+pub fn reply(g: &mut Game) -> (Move, usize) {
     // Initialize with a default invalid move 
     let mut move_result = Move {
         state: STATE_NO_VALID_MOVE,
@@ -2594,7 +2594,7 @@ pub fn reply(g: &mut Game) -> Move {
             #[cfg(debug_assertions)]
             println!("Stalemate detected!");
         }
-        return move_result;
+        return (move_result, depth);
     }
     
     // Iterative deepening loop
@@ -2710,7 +2710,7 @@ pub fn reply(g: &mut Game) -> Move {
     #[cfg(debug_assertions)]
     println!("Final depth: {}, time: {:.2}s", depth, g.start_time.elapsed().as_secs_f32());
     
-    return move_result;
+    return (move_result, depth);
 }
 
 fn board_pos(col: usize, row: usize) -> usize {

@@ -1,0 +1,54 @@
+# Drawback Chess – A Detailed Overview
+
+**Drawback Chess** is a creative chess variant that builds on the classic game by introducing secret handicaps, or "drawbacks," for each player. Available on **DrawbackChess.com**, it retains the standard chessboard, pieces, and starting positions, with the goal of checkmating the opponent’s king. However, unique rules and mechanics set it apart, blending traditional chess strategy with deduction and adaptability. Below is a detailed breakdown of its rules, gameplay mechanics, and distinctive features.
+
+---
+
+## Rules and Core Mechanics
+
+- **Standard Chess Base:** The game uses an 8x8 chessboard, traditional pieces (king, queen, rooks, etc.), and the usual starting setup. Players alternate turns, and the objective is checkmate, though stalemate and other standard outcomes apply with modifications.
+
+- **Secret Drawbacks:** At the game’s start, each player is privately assigned a **drawback**—a unique rule or restriction affecting their play. These are hidden from the opponent, revealed only at the game’s end (or by mutual agreement in casual play). Examples include:
+  - *“True Gentleman”*: Cannot capture the opponent’s queen.
+  - *“Skittish”*: Must move the king when in check, no other options allowed.
+  - *“My Kingdom for a Horse”*: Lose immediately if a knight is captured.
+
+- **Relaxed Check Rules:** Unlike standard chess, players can **move into or stay in check** if the opponent’s drawback prevents them from capturing the king. For instance, if your opponent can’t capture on certain squares or pieces, a seemingly risky move becomes legal. Checkmate only occurs when the king is in unavoidable danger given the opponent’s restriction.
+
+- **Drawback Variety:** Over **100 unique drawbacks** exist, impacting movement, captures, specific pieces, or even adding new win/lose conditions. They range from mild (e.g., avoiding one file) to severe (e.g., forced moves every turn).
+
+- **Skill-Based Balancing:** An **Elo-based system** on DrawbackChess.com assigns drawbacks based on player skill. Stronger players receive more restrictive drawbacks to level the field, ensuring fair matches across skill gaps. Randomness in assignment adds variety, though imbalances can occasionally occur.
+
+---
+
+## Gameplay Mechanics
+
+- **Deduction and Strategy:** Since drawbacks are secret, players must deduce their opponent’s limitation from unusual moves. For example, if an opponent avoids capturing your queen, they might have *“True Gentleman”*. This adds a **puzzle-solving layer** to chess, where you exploit guessed weaknesses while hiding your own.
+
+- **Adapting to Drawbacks:** Players must adjust strategies to their own drawback. With *“Checkers”* (must capture if possible), you might bait captures; with *“Rook Buddies”* (rooks can’t move until connected), you’d prioritize rook alignment. Bluffing—mimicking a different drawback—can mislead opponents.
+
+- **Dynamic Play:** The relaxed check rule leads to unconventional tactics, like moving a king into an enemy rook’s path if you suspect the rook can’t capture. This unpredictability shifts focus from pure chess skill to creative adaptation.
+
+---
+
+## Unique Features Differentiating Drawback Chess
+
+- **Hidden Information:** The secrecy of drawbacks introduces **psychological depth**. You’re not just playing chess but also decoding your opponent’s behavior, making every game a mental duel.
+
+- **Diverse Drawbacks:** The vast pool of drawbacks ensures variety. Examples include:
+  - **Movement:** *“Pack Mentality”*—moves must end next to your own piece.
+  - **Captures:** *“Covering Fire”*—need two ways to capture a piece.
+  - **Piece-Specific:** *“Shadow Queen”*—queen moves only on dark squares.
+  - **Win/Lose Conditions:** *“Three Check”*—lose if checked three times.
+
+- **Flexible Rules:** Allowing moves into check (when safe due to an opponent’s drawback) breaks traditional chess norms, encouraging bold and risky plays.
+
+- **Handicap System:** The Elo-adjusted drawbacks make it ideal for uneven matchups, letting beginners compete with experts by giving the latter tougher restrictions.
+
+- **Community Engagement:** Players share strategies and drawback lists online (e.g., Reddit, Chess.com forums), while YouTube creators like Eric Rosen showcase its quirky appeal, boosting its growing popularity.
+
+---
+
+## Summary
+
+**Drawback Chess** transforms chess into a game of strategy, deduction, and surprise. Its secret drawbacks—over 100 of them—range from quirky to challenging, forcing players to adapt while guessing their opponent’s handicap. Relaxed rules around check, an Elo-based balancing system, and a focus on hidden information distinguish it from standard chess, making it both accessible and replayable. Whether you’re a casual player seeking fun or a strategist craving a fresh challenge, Drawback Chess offers a unique twist on a timeless game.

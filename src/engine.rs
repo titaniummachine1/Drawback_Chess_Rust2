@@ -760,7 +760,6 @@ static FIGURES: [&str; 13] = [
     "♚", "♛", "♜", "♝", "♞", "♟", " ", "♙", "♘", "♗", "♖", "♕", "♔",
 ];
 
-#[cfg(feature = "drawbackChessDebug")]
 fn p(_b: Board) {
     #[cfg(feature = "drawbackChessDebug")]
     {
@@ -771,6 +770,11 @@ fn p(_b: Board) {
             }
         }
         println!();
+    }
+    
+    #[cfg(not(feature = "drawbackChessDebug"))]
+    {
+        // Empty implementation when the feature is disabled
     }
 }
 

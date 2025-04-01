@@ -1,0 +1,97 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+I'll help refine and clarify these rules to make them more precise and actionable. Here's a clearer version:
+
+# Code Quality and Development Guidelines
+
+## Code Structure and Organization
+1. **Simplicity First**
+   - Choose straightforward solutions over complex ones
+   - If a simple solution exists, don't overcomplicate it with unnecessary abstractions
+
+2. **Code Reusability (DRY Principle)**
+   - Before creating new functions/modules, search the codebase for existing similar functionality
+   - Refactor duplicate code into shared functions/modules
+   - Document where shared code is being used
+
+3. **File Organization**
+   - Keep files under 400 lines
+   - Split large files into logical, focused modules
+   - Place function definitions above their usage in Lua files
+
+4. **Module Structure**
+   ```lua
+   -- 1. Imports first
+   local dependency = require("dependency")
+   
+   -- 2. Reverse import documentation
+   --[[ Used by:
+       - module_a.lua
+       - module_b.lua
+   ]]
+   
+   -- 3. Constants/Configurations
+   -- 4. Function definitions
+   -- 5. Main logic
+   ```
+
+## Coding Practices
+1. **Function Definitions**
+   - Prefer named functions over anonymous ones
+   - Exception: Use anonymous functions only when it improves readability
+   ```lua
+   -- Good
+   local function handleClick() end
+   
+   -- Avoid unless it improves readability
+   button:onClick(function() end)
+   ```
+
+2. **Vector Operations**
+   - Normalize vectors using: `vector / vector:Length()`
+   - Don't use `.normalize()` as it's not available in the API
+   - Use `math.atan(y, x)` instead of deprecated `math.atan2(y, x)`
+
+3. **Global Variables**
+   - Place shared values (used by 3+ modules) in a dedicated globals module
+   - Document usage:
+   ```lua
+   -- globals.lua
+   GAME_SPEED = 1.0  -- Used by: physics.lua, player.lua, enemy.lua
+   ```
+
+## Development Workflow
+1. **Change Management**
+   - Only implement explicitly requested changes
+   - Thoroughly test changes within their scope
+   - Don't make speculative or "nice to have" modifications
+
+2. **Testing and Verification**
+   - Run `cargo run` before considering any fix complete
+   - Read terminal output carefully before concluding success/failure
+   - Use mock data only in test environments, never in production code
+
+3. **Version Control**
+   - Commit before running `cargo run` (using PowerShell terminal)
+   - Write short, descriptive commit messages
+   - Make atomic commits (one logical change per commit)
+
+## Chess Game Development Specific
+1. **No Shortcuts Policy**
+   - Implement complete, correct game logic
+   - Don't use visual tricks that might break game mechanics
+   - Ensure all piece movements and board states are properly validated
+   - Maintain chess rules integrity at all times
+
+## Bug Fixing Strategy
+1. First attempt to fix within existing implementation
+2. Only introduce new patterns if absolutely necessary
+3. Remove old implementation completely when switching approaches
+4. Document the reasoning behind significant changes
+
+user is inecperienced in major projects so unles he states specyficly he likely doesnt know what hes doing and only asks to do changes absed on what he sees program do and function like
+
+always read output of terminal

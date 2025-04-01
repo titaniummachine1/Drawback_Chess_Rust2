@@ -1,0 +1,10 @@
+{
+  "think": {
+    "command": "/home/xxx/.local/bin/mcp-think-tool",
+    "args": [],
+    "type": "stdio",
+    "pollingInterval": 30000,
+    "startupTimeout": 30000,
+    "restartOnFailure": true
+  }
+}

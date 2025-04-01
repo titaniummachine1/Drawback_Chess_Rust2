@@ -173,18 +173,18 @@ const HASH_BIT_BUFFER_SIZE: usize = 32; // plus 8 bytes for hash when debugging
 const BIT_BUFFER_SIZE: usize = bit_buffer_size();
 
 const fn bit_buffer_size() -> usize {
-    #[cfg(not(feature = "salewskiChessDebug"))]
+    #[cfg(not(feature = "drawbackChessDebug"))]
     {
         CORE_BIT_BUFFER_SIZE
     }
-    #[cfg(feature = "salewskiChessDebug")]
+    #[cfg(feature = "drawbackChessDebug")]
     {
         HASH_BIT_BUFFER_SIZE
     }
 }
 
 // this syntax is also possible
-const _JUST_TEST: usize = if cfg!(feature = "salewskiChessDebug") {
+const _JUST_TEST: usize = if cfg!(feature = "drawbackChessDebug") {
     2
 } else {
     7
@@ -211,13 +211,13 @@ pub fn new_game() -> Game {
         println!("compiled in debug mode");
     }
 
-    // cargo run --features=salewskiChessDebug
-    if cfg!(feature = "salewskiChessDebug") {
-        println!("salewskiChessDebug");
+    // cargo run --features=drawbackChessDebug
+    if cfg!(feature = "drawbackChessDebug") {
+        println!("drawbackChessDebug");
     }
-    #[cfg(feature = "salewskiChessDebug")]
+    #[cfg(feature = "drawbackChessDebug")]
     {
-        println!("salewskiChessDebug2");
+        println!("drawbackChessDebug2");
     }
 
     // Default::default() does not work, e.g. Duration has no default value!
@@ -714,7 +714,7 @@ fn get_tte<'a>(g: &'a mut Game, key: BitBuffer192) -> isize {
 }
 
 fn debug_inc(x: &mut i64) {
-    if cfg!(feature = "salewskiChessDebug") {
+    if cfg!(feature = "drawbackChessDebug") {
         *x += 1;
     }
 }
@@ -755,26 +755,27 @@ fn init_hr(hr: &mut HashResult) {
     hr.state = STATE_PLAYING;
 }
 
-#[cfg(feature = "salewskiChessDebug")]
+#[cfg(feature = "drawbackChessDebug")]
 static FIGURES: [&str; 13] = [
     "♚", "♛", "♜", "♝", "♞", "♟", " ", "♙", "♘", "♗", "♖", "♕", "♔",
 ];
 
+#[cfg(feature = "drawbackChessDebug")]
 fn p(_b: Board) {
-    #[cfg(feature = "salewskiChessDebug")]
+    #[cfg(feature = "drawbackChessDebug")]
     {
-        let b = _b;
-        for (i, c) in b.iter().enumerate() {
-            print!("{}", FIGURES[(6 + *c) as usize]);
-            if (i + 1) % 8 == 0 {
-                println!("")
+        for r in 0..8 {
+            println!();
+            for c in 0..8 {
+                print!("{} ", _b[r * 8 + c]);
             }
         }
+        println!();
     }
 }
 
 fn pf(_b: [i16; 64]) {
-    #[cfg(feature = "salewskiChessDebug")]
+    #[cfg(feature = "drawbackChessDebug")]
     {
         let b = _b;
         for (i, c) in b.iter().enumerate() {
@@ -1788,7 +1789,7 @@ fn abeta(
     if depth_0 == 0 {
         // more detailed null move estimation for quiescence search. NOTE: Take attacs into account?
         evaluation += hash_res_kks_len; // we may do a more fine grained board control evaluation?
-        if cfg!(feature = "salewskiChessDebug") {
+        if cfg!(feature = "drawbackChessDebug") {
             lift(
                 &mut g.max_delta_len,
                 (hash_res.kks.len() as i64 - old_list_len).abs(),
@@ -1828,7 +1829,7 @@ fn abeta(
                     eval_cnt, hash_res_kks_high, el.eval_depth
                 );
                 //debug_assert!(eval_cnt as usize + 1 == hash_res_kks_high); // no, not always
-                if false && cfg!(feature = "salewskiChessDebug") {
+                if false && cfg!(feature = "drawbackChessDebug") {
                     println!("{:?}", hash_res.kks);
                 }
                 assert!(valid_move_found == true);
@@ -2142,7 +2143,7 @@ fn abeta(
         );
     }
     hash_res.state = result.state;
-    if cfg!(feature = "salewskiChessDebug") {
+    if cfg!(feature = "drawbackChessDebug") {
         if cup == 0 {
             println!("{:?}", hash_res.kks);
         }
@@ -2193,9 +2194,9 @@ fn alphabeta(g: &mut Game, color: Color, depth: i64, ep_pos: i8) -> Move {
         20,
         ep_pos,
     );
-    //when defined(salewskiChessDebug):
+    //when defined(drawbackChessDebug):
     if true {
-        if false || cfg!(feature = "salewskiChessDebug") {
+        if false || cfg!(feature = "drawbackChessDebug") {
             write_statistics(&g);
         }
         //echo result
@@ -2257,7 +2258,7 @@ pub fn do_move(g: &mut Game, p0: Position, p1: Position, silent: bool) -> i32 {
             *g.history.entry(new_state).or_insert(0) += 1;
         }
     }
-    //when defined(salewskiChessDebug):
+    //when defined(drawbackChessDebug):
     if true {
         if !silent {
             g.debug_list.push(move_to_str(&g, p0, p1, result));
@@ -2497,7 +2498,7 @@ pub fn reply(g: &mut Game) -> Move {
     let color = ((g.move_counter as i64 + 1) % 2) * 2 - 1;
     let mut result: Move = Default::default();
     //println!("{:?}", g.freedom);
-    if cfg!(feature = "salewskiChessDebug") {
+    if cfg!(feature = "drawbackChessDebug") {
         for i in 0..13 {
             println!("");
             pf(g.freedom[i]);
@@ -2584,7 +2585,7 @@ fn _print(g: &Game) {
 
 /*
 
-when defined(salewskiChessDebug):
+when defined(drawbackChessDebug):
   print()
 
 //set_board(B_KING, BC, B4)

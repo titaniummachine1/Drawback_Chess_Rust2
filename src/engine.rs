@@ -29,7 +29,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
-use rand::Rng;
+// use rand::Rng; // Removed unused import
 use once_cell::sync::Lazy; // Added for lazy static initialization
 
 // ### our own primitive bitset type

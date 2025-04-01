@@ -56,8 +56,8 @@ fn main() -> Result<(), eframe::Error> {
         Box::new(|cc| {
             // This gives us image support:
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            //Box::<MyApp>::default()
-            Ok(Box::<MyApp>::default())
+            // The closure should return Box<dyn eframe::App>
+            Box::new(MyApp::default())
         }),
     )
 }

@@ -1794,9 +1794,13 @@ fn abeta(
             // Killer Move Check:
             let mut killer_bonus = 0i16;
             if el.df == 0 { // Only consider non-captures for killer moves
-                if (el.si == g.killer_moves[cup as usize][0].0 && el.di == g.killer_moves[cup as usize][0].1) ||
-                   (el.si == g.killer_moves[cup as usize][1].0 && el.di == g.killer_moves[cup as usize][1].1) {
-                    killer_bonus = 500; // Arbitrary high bonus to prioritize killers
+                // Add bounds check for cup before accessing killer_moves
+                if cup < MAX_DEPTH as i64 && cup >= 0 { // Ensure cup is within bounds [0, 15]
+                    let cup_idx = cup as usize;
+                    if (el.si == g.killer_moves[cup_idx][0].0 && el.di == g.killer_moves[cup_idx][0].1) ||
+                       (el.si == g.killer_moves[cup_idx][1].0 && el.di == g.killer_moves[cup_idx][1].1) {
+                        killer_bonus = 500; // Arbitrary high bonus to prioritize killers
+                    }
                 }
             }
 

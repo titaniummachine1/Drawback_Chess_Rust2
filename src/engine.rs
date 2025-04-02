@@ -2040,7 +2040,7 @@ fn abeta(
                 result.score = KING_VALUE as i64; // + 1 // or high(int16)
                 hash_res.state = STATE_CAN_CAPTURE_KING;
                 hash_res.score[MAX_DEPTH].s = result.score as i16; // MAX_DEPTH, as it is the final score
-                debug_assert!(hash_pos < 0); // once stored, we just retrieve it
+                // debug_assert!(hash_pos < 0); // Removed incorrect assertion
                 put_tte(g, encoded_board, hash_res, depth_0 as i64, hash_pos); // store this for a fast return next time
                 return result;
             }

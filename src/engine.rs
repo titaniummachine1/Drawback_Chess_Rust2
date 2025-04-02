@@ -1579,6 +1579,10 @@ fn abeta(
     let depth_0: usize = max(v_depth / V_RATIO, 0) as usize; // starting at depth_0 == 0 we do only captures
     debug_assert!(depth_0 <= MAX_DEPTH);
     let only_captures = depth_0 == 0;
+    let mut tt_move_si = -1i8;
+    let mut tt_move_di = -1i8;
+    let mut tt_move_promote_to = 0i8;
+
     if depth_0 > 0 {
         lift(&mut g.max_cup, cup);
     }
@@ -1627,10 +1631,18 @@ fn abeta(
                     result.promote_to = hash_res.score[i].promote_to as i64;
                     result.state = hash_res.state;
                     debug_inc(&mut g.score_hash_succ);
+                    // Store TT move for ordering
+                    tt_move_si = hash_res.score[i].si;
+                    tt_move_di = hash_res.score[i].di;
+                    tt_move_promote_to = hash_res.score[i].promote_to;
                     return result;
                 } else if pmq(hash_res.score[i].s as i64, -cup) >= beta {
                     // at least we can use the score for a beta cutoff
                     result.score = beta;
+                    // Store TT move for ordering even if it causes cutoff
+                    tt_move_si = hash_res.score[i].si;
+                    tt_move_di = hash_res.score[i].di;
+                    tt_move_promote_to = hash_res.score[i].promote_to;
                     return result;
                 }
             }

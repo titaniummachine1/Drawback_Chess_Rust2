@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Added pleco as a local dependency
+pleco = { path = "assets/pleco" }
+
 mpsc = "*"
 num-traits = "*"
 # bitintr = "*"

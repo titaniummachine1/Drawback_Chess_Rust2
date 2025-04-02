@@ -616,7 +616,7 @@ fn lift_i16(a: &mut i16, b: i16) {
     }
 }
 
-const TTE_SIZE: usize = 1024 * 1024 * 2; // must be a power of 2
+const TTE_SIZE: usize = 1024 * 512; // Adjusted size for ~225MB
 const TT_TRY: i32 = 5;
 
 fn odd(i: i8) -> bool {
@@ -1534,7 +1534,7 @@ fn pmq(a: i64, b: i64) -> i64 {
 // v_depth: search depth, as a multiply of V_RATIO
 // v_depth is the virtual search depth, it is a multiple of real search depth to allow a more
 // fine grained search depth extension.
-// v_depth starts with a multiple of V_RATIO (n * VRation + V_RATIO div 2), and generally decreases by
+// v_depth starts with a multiple of VRation + V_RATIO div 2, and generally decreases by
 // V_RATIO for each recursive call of abeta(). For special very important moves it may decrease less,
 // i.e. if we are in check. Real depth is always v_depth div V_RATIO.
 // v_depth may even increase in rare cases!
@@ -1613,47 +1613,59 @@ fn abeta(
     let hash_pos = get_tte(g, encoded_board);
     if hash_pos >= 0 {
         hash_res = g.tt[hash_pos as usize].res.clone(); // no way to avoid the clone() here
-                                                        // debug_assert!(hash_res.kks.len() > 0); // can be zero for checkmate or stalemate
-                                                        // we have the list of moves, and maybe the exact score, or a possible beta cutoff
         debug_inc(&mut g.hash_succ);
+
+        // --- Check TT Scores ---
+        let mut found_hint = false; // Flag if we found a potential move hint
+
         for i in (depth_0..(MAX_DEPTH + 1)).rev() {
+            // 1. Check for exact score
             if hash_res.score[i].s != INVALID_SCORE {
-                // we have the exact score, so return it
-                if i == depth_0
-                    || hash_res.score[i].s.abs() < KING_VALUE_DIV_2
-                    || hash_res.score[i].s.abs() >= KING_VALUE
+                let current_score = pmq(hash_res.score[i].s as i64, -cup);
+
+                // Condition to use the exact score and RETURN immediately:
+                if i == depth_0 // If it's for the current depth
+                    || current_score.abs() < KING_VALUE_DIV_2 as i64 // Or not a mate score
+                    || current_score.abs() >= KING_VALUE as i64 // Or a confirmed mate
                 {
-                    // use of deeper knowledge in endgame can give wrong moves to mate reports
-                    // or generate repeated move sequences.
-                    result.score = pmq(hash_res.score[i].s as i64, -cup);
-                    result.src = hash_res.score[i].si as i64; // these details are currently only needed for cup == 0
+                    result.score = current_score;
+                    result.src = hash_res.score[i].si as i64;
                     result.dst = hash_res.score[i].di as i64;
                     result.promote_to = hash_res.score[i].promote_to as i64;
                     result.state = hash_res.state;
                     debug_inc(&mut g.score_hash_succ);
-                    // Store TT move for ordering
+                    return result; // Return immediately with exact score
+                }
+                // If it's an exact score from deeper search, store it as a hint but DON'T return yet.
+                else if !found_hint { // Store the first (deepest) hint found
                     tt_move_si = hash_res.score[i].si;
                     tt_move_di = hash_res.score[i].di;
                     tt_move_promote_to = hash_res.score[i].promote_to;
-                    return result;
-                } else if pmq(hash_res.score[i].s as i64, -cup) >= beta {
-                    // at least we can use the score for a beta cutoff
+                    found_hint = true;
+                    // Do not return, continue checking for cutoffs or better hints
+                }
+
+                // Check if this score (even if just a hint) causes beta cutoff
+                if current_score >= beta {
                     result.score = beta;
-                    // Store TT move for ordering even if it causes cutoff
-                    tt_move_si = hash_res.score[i].si;
-                    tt_move_di = hash_res.score[i].di;
-                    tt_move_promote_to = hash_res.score[i].promote_to;
-                    return result;
+                    return result; // Return immediately on beta cutoff
                 }
             }
-            if pmq(hash_res.floor[i].s as i64, -cup) >= beta {
-                // a beta cutoff
-                result.score = beta;
-                debug_inc(&mut g.floor_hash_succ);
-                return result;
+
+            // 2. Check for floor cutoff (must happen after checking exact score for this depth)
+            if hash_res.floor[i].s != INVALID_SCORE {
+                let floor_score = pmq(hash_res.floor[i].s as i64, -cup);
+                if floor_score >= beta {
+                    result.score = beta;
+                    debug_inc(&mut g.floor_hash_succ);
+                    return result; // Return immediately on beta cutoff
+                }
             }
         }
-        lift(&mut g.tt[hash_pos as usize].res.pri, depth_0 as i64); // avoid that this entry in tt is overwritten by recursive abeta() calls!
+        // --- End Check TT Scores ---
+
+        // If we finish the loop without returning, lift the priority
+        lift(&mut g.tt[hash_pos as usize].res.pri, depth_0 as i64);
     } else {
         // we have to create the move list
         hash_res = HashResult::default();
@@ -1791,6 +1803,13 @@ fn abeta(
         for el in &mut s {
             debug_assert!(g.board[el.si as usize] != VOID_ID);
 
+            // --- Add TT Move Bonus ---
+            let mut tt_move_bonus = 0i16;
+            if el.si == tt_move_si && el.di == tt_move_di && el.promote_to == tt_move_promote_to {
+                tt_move_bonus = 10000; // High priority for TT move
+            }
+            // --- End TT Move Bonus ---
+
             // Killer Move Check:
             let mut killer_bonus = 0i16;
             if el.df == 0 { // Only consider non-captures for killer moves
@@ -1817,7 +1836,8 @@ fn abeta(
                 - FIGURE_VALUE[el.sf.abs() as usize] / 2 * (el.df != 0) as i16
                 + g.freedom[(6 + el.sf) as usize][(0 + el.di) as usize]
                 - g.freedom[(6 + el.sf) as usize][(0 + el.si) as usize]
-                + killer_bonus; // Add killer bonus here
+                + killer_bonus // Add killer bonus
+                + tt_move_bonus; // Add TT move bonus
         }
         let h = s.len();
         ixsort(&mut s, h);

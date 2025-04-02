@@ -76,6 +76,7 @@ struct MyApp {
     last_depth_msg: String,
     rotated: bool,
     time_per_move: f32,        // Seconds per move for the engine
+    max_engine_depth: u16,     // Max search depth for the engine
     tagged: [u8; 64],          // Board highlighting (0=none, 1=possible dest, 2=last move)
     state: i32,                // Current UI/game state
     players: [u8; 2],          // 0 = Human, 1 = Engine (index 0=White, 1=Black)
@@ -94,6 +95,7 @@ impl Default for MyApp {
             last_score_msg: "".to_owned(),
             last_depth_msg: "".to_owned(),
             time_per_move: 3.0, // Default time per move
+            max_engine_depth: 10, // Default max depth
             rotated: false, // Default: White at bottom
             tagged: [0; 64],
             players: [ENGINE, ENGINE], // Default: AI vs AI
@@ -175,6 +177,8 @@ impl eframe::App for MyApp {
                 };
                 ui.separator();
                 ui.add(egui::Slider::new(&mut self.time_per_move, 0.1..=10.0).text("Sec/move"));
+                ui.add(egui::Slider::new(&mut self.max_engine_depth, 1..=20).text("Max Depth"))
+                    .on_hover_text("Maximum search depth the engine will reach, even if time remains.");
                 if ui.button("Rotate Board").clicked() {
                     self.rotated ^= true;
                 }
@@ -390,6 +394,7 @@ impl eframe::App for MyApp {
             self.rx = Some(rx);
             let board_clone = Arc::clone(&self.board); // Clone Arc for the thread
             let time_limit_millis = (self.time_per_move * 1000.0) as u128;
+            let max_depth_limit = self.max_engine_depth;
 
             self.state = STATE_U3; // Move to thinking state
             println!("[State U2] Starting engine thread. Transitioning to U3");
@@ -404,11 +409,10 @@ impl eframe::App for MyApp {
                 let time_limit = Duration::from_millis(time_limit_millis as u64);
 
                 // Use a loop with time checks for iterative deepening (conceptual)
-                // Pleco's internal search likely handles this, but we manage the overall time limit.
+                // Keep track of the best move found within the time limit.
                 let mut best_move = BitMove::null();
                 let mut best_move_depth: u16 = 0;
                 let mut current_depth: u16 = 1;
-                let max_search_depth: u16 = 7; // Further reduced max depth
 
                 // Lock the Arc<Mutex<Board>> briefly to get a clone of the Board state.
                 println!("  [Engine Thread] Locking board to clone...");
@@ -416,39 +420,41 @@ impl eframe::App for MyApp {
                 let initial_board_state = board_clone.lock().unwrap().clone();
                 println!("  [Engine Thread] Board cloned, lock released. Starting search loop...");
 
-                while Instant::now().duration_since(start_time) < time_limit && current_depth <= max_search_depth {
-                     // Send depth update *before* starting search for this depth
+                // Loop while within depth limit
+                while current_depth <= max_depth_limit {
+                     // Check time *before* starting the search for this depth
+                     if Instant::now().duration_since(start_time) >= time_limit {
+                          println!("    [Engine Thread] Time limit reached ({:?}). Breaking loop.", time_limit);
+                          break; // Exit loop if time is up
+                     }
+
+                     // Send depth update
                      // Ignore send error if main thread closed receiver early
                      let _ = tx.send((None, current_depth));
 
-                     // Clone the board state *from the initial clone* for this depth's search
-                     // No need for the MutexGuard (board_lock) here anymore.
-                     let board_to_search = initial_board_state.shallow_clone();
+                     // Clone board for this search iteration
+                     let board_to_search = initial_board_state.clone();
 
                      // Run the search for the current depth using the static method
                      // This blocks until the depth search is complete.
-                     println!("    [Engine Thread] Searching depth {}...", current_depth);
+                     println!("    [Engine Thread] Searching depth {} (Time elapsed: {:?})...", current_depth, Instant::now().duration_since(start_time));
                      let move_found = JamboreeSearcher::best_move(board_to_search, current_depth);
-                     println!("    [Engine Thread] Depth {} search complete. Move found: {}", current_depth, move_found);
+                     println!("    [Engine Thread] Depth {} search complete (Time elapsed: {:?}). Move found: {}", current_depth, Instant::now().duration_since(start_time), move_found);
 
                      if move_found != BitMove::null() {
                          best_move = move_found; // Update best move found so far
                          best_move_depth = current_depth; // Record depth
                      } else {
                          // If search fails or returns null, break or use previous best
-                         // This might happen at low depths if already checkmated/stalemated
-                         break;
-                     }
-
-                     // Check time *after* the blocking search iteration completes
-                     if Instant::now().duration_since(start_time) >= time_limit {
+                         // This might happen if already checkmated/stalemated. No point searching deeper.
+                         println!("    [Engine Thread] Null move returned. Breaking loop.");
                          break;
                      }
 
                      current_depth += 1;
                 }
 
-                // Send the best move found within the time limit
+                // Send the best move found by the deepest search completed within the time limit
                 if best_move != BitMove::null() {
                      // Send move and the depth it was found at
                      println!("  [Engine Thread] Sending final move {} (found at depth {}).", best_move, best_move_depth);
@@ -495,7 +501,7 @@ impl eframe::App for MyApp {
                                         self.last_move_msg.push_str(" Checkmate!");
                                         self.state = STATE_UX;
                                    } else if board.stalemate() || board.fifty_move_rule() {
-                                        self.last_move_msg.push_str(" Draw by 50-move or Stalemate!");
+                                        self.last_move_msg.push_str(" Draw by 50-move or Stalemate!"); // Reverted message
                                         self.state = STATE_UX;
                                    } else {
                                         self.state = STATE_UZ; // Continue game

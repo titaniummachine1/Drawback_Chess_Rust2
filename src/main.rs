@@ -46,10 +46,10 @@ const FIGURES: [&str; 13] = [
 // State machine for UI and game flow
 const STATE_UZ: i32 = -2; // Determine whose turn it is
 const STATE_UX: i32 = -1; // Game terminated (checkmate/stalemate/draw)
-const STATE_U0: i32 = 0; // Waiting for human player's first click (source square)
-const STATE_U1: i32 = 1; // Waiting for human player's second click (destination square)
-const STATE_U2: i32 = 2; // Engine's turn to think (start thread)
-const STATE_U3: i32 = 3; // Engine is thinking (waiting for thread result)
+const STATE_U0: i32 = 0;  // Waiting for human player's first click (source square)
+const STATE_U1: i32 = 1;  // Waiting for human player's second click (destination square)
+const STATE_U2: i32 = 2;  // Engine's turn to think (start thread)
+const STATE_U3: i32 = 3;  // Engine is thinking (waiting for thread result)
 
 const BOOL_TO_ENGINE: [u8; 2] = [HUMAN, ENGINE];
 const BOOL_TO_STATE: [i32; 2] = [STATE_U0, STATE_U2]; // Map player type (Human/Engine) to state
@@ -85,6 +85,7 @@ struct MyApp {
     p0: Option<SQ>,            // Source square selected by human
     new_game: bool,            // Flag to reset the game
     rx: Option<mpsc::Receiver<(Option<BitMove>, u16)>>, // Receiver for (Option<move>, depth)
+    move_count: u16,          // Track move number for progressive time management
 }
 
 impl Default for MyApp {
@@ -94,8 +95,8 @@ impl Default for MyApp {
             last_move_msg: "DrawbackChess2 (Pleco)".to_owned(),
             last_score_msg: "".to_owned(),
             last_depth_msg: "".to_owned(),
-            time_per_move: 3.0, // Default time per move
-            max_engine_depth: 10, // Default max depth
+            time_per_move: 1.0,     // Default reduced to 1 second per move for more responsive gameplay
+            max_engine_depth: 8,     // Default reduced to 8 for faster play
             rotated: false, // Default: White at bottom
             tagged: [0; 64],
             players: [ENGINE, ENGINE], // Default: AI vs AI
@@ -105,6 +106,7 @@ impl Default for MyApp {
             engine_plays_white: true,
             engine_plays_black: true,
             rx: None,
+            move_count: 0,
         }
     }
 }
@@ -134,12 +136,11 @@ impl eframe::App for MyApp {
                 self.last_score_msg = "".to_owned();
                 self.last_depth_msg = "".to_owned();
                 self.p0 = None;
-                // Ensure receiver is cleared if a game was aborted mid-search
-                if let Some(rx) = self.rx.take() {
-                    drop(rx); // Close the channel
-                }
+                self.move_count = 0;
+                
+                // Clear any existing engine search
+                self.rx = None;
             } else {
-                // If lock fails, request repaint and try again next frame
                 ctx.request_repaint();
                 return;
             }
@@ -176,9 +177,11 @@ impl eframe::App for MyApp {
                     _ => ui.label("Unknown state"),
                 };
                 ui.separator();
-                ui.add(egui::Slider::new(&mut self.time_per_move, 0.1..=10.0).text("Sec/move"));
-                ui.add(egui::Slider::new(&mut self.max_engine_depth, 1..=20).text("Max Depth"))
-                    .on_hover_text("Maximum search depth the engine will reach, even if time remains.");
+                ui.add(egui::Slider::new(&mut self.time_per_move, 0.1..=5.0).text("Seconds per move"))
+                    .on_hover_text("Engine will use exactly this much time for each move.");
+                
+                ui.label(format!("Move: {}", self.move_count));
+                
                 if ui.button("Rotate Board").clicked() {
                     self.rotated ^= true;
                 }
@@ -187,13 +190,13 @@ impl eframe::App for MyApp {
                 }
                 if ui.checkbox(&mut self.engine_plays_white, "Engine plays White").changed() {
                     self.players[0] = BOOL_TO_ENGINE[self.engine_plays_white as usize];
-                    if self.state != STATE_U2 && self.state != STATE_U3 { // Don't interrupt engine
+                    if self.state != STATE_U2 && self.state != STATE_U3 {
                         self.state = STATE_UZ;
                     }
                 }
                 if ui.checkbox(&mut self.engine_plays_black, "Engine plays Black").changed() {
                     self.players[1] = BOOL_TO_ENGINE[self.engine_plays_black as usize];
-                     if self.state != STATE_U2 && self.state != STATE_U3 { // Don't interrupt engine
+                     if self.state != STATE_U2 && self.state != STATE_U3 {
                         self.state = STATE_UZ;
                     }
                 }
@@ -267,285 +270,255 @@ impl eframe::App for MyApp {
         });
 
         // --- State Machine Logic ---
-        //println!("Current state: {}", self.state);
+        self.handle_state_machine(ctx, clicked_sq);
+    }
+}
 
-        if self.state == STATE_UX {
-            // Game terminated, do nothing until new game
-        } else if self.state == STATE_UZ {
-            println!("[State UZ] Determining next player...");
-            // Determine next player and state
-            if let Ok(board) = self.board.try_lock() {
-                 let current_player_index = board.turn() as usize; // 0 for White, 1 for Black
-                 self.state = BOOL_TO_STATE[self.players[current_player_index] as usize];
-                 println!("  -> Next state: {}", self.state);
-            } else {
-                 ctx.request_repaint(); // Try again next frame if lock failed
-            }
-        } else if self.state == STATE_U0 { // Waiting for Human Source Click
-            //println!("[State U0] Waiting for human source click...");
-            if let Some(sq) = clicked_sq {
-                 if let Ok(board) = self.board.try_lock() {
-                    let piece_on_sq = board.piece_at_sq(sq);
-                    // Check if clicked square has a piece of the current player
-                    if piece_on_sq != Piece::None && piece_on_sq.player().map_or(false, |p| p == board.turn()) {
-                         self.p0 = Some(sq);
-                         self.tagged = [0; 64]; // Clear old highlights
-                         self.tagged[sq_to_idx(sq)] = 2; // Highlight source square
-
-                         // Highlight legal destinations
-                         let moves: MoveList = board.generate_moves(); // Correct type
-                         for m in moves.iter() { // Iterate over the MoveList
-                             if (*m).get_src() == sq { // Dereference m
-                                 self.tagged[sq_to_idx((*m).get_dest())] = 1; // Dereference m
-                             }
-                         }
-                         println!("  -> Human selected source: {}, highlighting moves. Transitioning to U1", sq);
-                         self.state = STATE_U1; // Move to waiting for destination
-                    }
-                 } else {
-                      ctx.request_repaint();
-                 }
-            }
-        } else if self.state == STATE_U1 { // Waiting for Human Destination Click
-            if let Some(dest_sq) = clicked_sq {
-                 if let Some(src_sq) = self.p0 {
-                     // Attempt to find the move
-                     let mut move_to_make: Option<BitMove> = None;
-                     if let Ok(board) = self.board.try_lock() {
-                         let legal_moves: MoveList = board.generate_moves(); // Correct type
-                         // Check for promotion first (requires user input, default to Queen for now)
-                         let piece_on_src = board.piece_at_sq(src_sq);
-                         let is_pawn = piece_on_src.type_of() == PieceType::P;
-                         let promotion_rank = if board.turn() == Player::White { Rank::R8 } else { Rank::R1 };
-                         let is_promotion = is_pawn && dest_sq.rank() == promotion_rank;
-
-                         for m in legal_moves.iter() { // Iterate over the MoveList
-                             if (*m).get_src() == src_sq && (*m).get_dest() == dest_sq { // Dereference m
-                                 // Basic move match
-                                 if is_promotion {
-                                     // Found a potential promotion, check if it's queen promo
-                                     if (*m).is_promo() && (*m).promo_piece() == PieceType::Q { // Dereference m
-                                         move_to_make = Some(*m); // Dereference m
-                                         break;
-                                     }
-                                     // If not queen promo, keep searching (maybe user clicks again for knight?)
-                                     // For now, we only handle queen promo automatically.
-                                 } else {
-                                     // Non-promotion move matches
-                                     move_to_make = Some(*m); // Dereference m
-                                     break;
-                                 }
-                             }
-                         }
-
-                         // If no queen promotion found, but it *should* be a promotion, create queen promo
-                         if move_to_make.is_none() && is_promotion {
-                              // Determine if it's a capture promotion
-                              let target_piece = board.piece_at_sq(dest_sq);
-                              let promo_flag = if target_piece != Piece::None {
-                                   BitMove::FLAG_PROMO_CAP_Q // Capture promotion
-                              } else {
-                                   BitMove::FLAG_PROMO_Q // Simple promotion
-                              };
-                              move_to_make = Some(BitMove::make(promo_flag, src_sq, dest_sq));
-                         }
-
-                     } else {
-                         ctx.request_repaint();
-                     }
-
-
-                     if let Some(move_to_apply) = move_to_make {
-                          // Apply the move
-                          if let Ok(mut board) = self.board.try_lock() {
-                              let move_string = move_to_apply.stringify(); // Use stringify()
-                              board.apply_move(move_to_apply);
-
-                              // Update UI
-                              self.last_move_msg = format!("Human: {}", move_string);
-                              println!("[State U1] Human applied move: {}", move_string);
-                              println!("  -> New Board FEN: {}", board.fen());
-                              self.last_score_msg = "".to_owned();
-                              self.last_depth_msg = "".to_owned();
-                              self.tagged = [0; 64];
-                              self.tagged[sq_to_idx(move_to_apply.get_src())] = 2;
-                              self.tagged[sq_to_idx(move_to_apply.get_dest())] = 2;
-                              self.p0 = None;
-                              self.state = STATE_UZ; // Go back to determine next player
-                          } else {
-                              ctx.request_repaint();
-                          }
-                     } else {
-                         // Invalid move click or clicked source square again - reset to state U0
-                         self.p0 = None;
-                         self.tagged = [0; 64];
-                         println!("[State U1] Invalid human move click. Resetting highlights.");
-                         self.state = STATE_UZ; // Reset highlights and state
-                     }
-                 } else {
-                     // Should not happen if p0 is None in state U1, but reset just in case
-                     self.p0 = None;
-                     self.tagged = [0; 64];
-                     self.state = STATE_UZ;
-                 }
-            }
-        } else if self.state == STATE_U2 { // Start Engine Search
-            let (tx, rx) = mpsc::channel::<(Option<BitMove>, u16)>();
-            self.rx = Some(rx);
-            let board_clone = Arc::clone(&self.board); // Clone Arc for the thread
-            let time_limit_millis = (self.time_per_move * 1000.0) as u128;
-            let max_depth_limit = self.max_engine_depth;
-
-            self.state = STATE_U3; // Move to thinking state
-            println!("[State U2] Starting engine thread. Transitioning to U3");
-
-            thread::spawn(move || {
-                // Use JamboreeSearcher (or replace with another Pleco bot if desired)
-                // We need to find the best move within the time limit.
-                // Pleco's `get_move` is suitable here.
-
-                // Set the time limit for the search
-                let start_time = Instant::now();
-                let time_limit = Duration::from_millis(time_limit_millis as u64);
-
-                // Use a loop with time checks for iterative deepening (conceptual)
-                // Keep track of the best move found within the time limit.
-                let mut best_move = BitMove::null();
-                let mut best_move_depth: u16 = 0;
-                let mut current_depth: u16 = 1;
-
-                // Lock the Arc<Mutex<Board>> briefly to get a clone of the Board state.
-                println!("  [Engine Thread] Locking board to clone...");
-                // The lock is released immediately after the clone is created.
-                let initial_board_state = board_clone.lock().unwrap().clone();
-                println!("  [Engine Thread] Board cloned, lock released. Starting search loop...");
-
-                // Loop while within depth limit
-                while current_depth <= max_depth_limit {
-                     // Check time *before* starting the search for this depth
-                     if Instant::now().duration_since(start_time) >= time_limit {
-                          println!("    [Engine Thread] Time limit reached ({:?}). Breaking loop.", time_limit);
-                          break; // Exit loop if time is up
-                     }
-
-                     // Send depth update
-                     // Ignore send error if main thread closed receiver early
-                     let _ = tx.send((None, current_depth));
-
-                     // Clone board for this search iteration
-                     let board_to_search = initial_board_state.clone();
-
-                     // Run the search for the current depth using the static method
-                     // This blocks until the depth search is complete.
-                     println!("    [Engine Thread] Searching depth {} (Time elapsed: {:?})...", current_depth, Instant::now().duration_since(start_time));
-                     let move_found = JamboreeSearcher::best_move(board_to_search, current_depth);
-                     println!("    [Engine Thread] Depth {} search complete (Time elapsed: {:?}). Move found: {}", current_depth, Instant::now().duration_since(start_time), move_found);
-
-                     if move_found != BitMove::null() {
-                         best_move = move_found; // Update best move found so far
-                         best_move_depth = current_depth; // Record depth
-                     } else {
-                         // If search fails or returns null, break or use previous best
-                         // This might happen if already checkmated/stalemated. No point searching deeper.
-                         println!("    [Engine Thread] Null move returned. Breaking loop.");
-                         break;
-                     }
-
-                     current_depth += 1;
-                }
-
-                // Send the best move found by the deepest search completed within the time limit
-                if best_move != BitMove::null() {
-                     // Send move and the depth it was found at
-                     println!("  [Engine Thread] Sending final move {} (found at depth {}).", best_move, best_move_depth);
-                     let _ = tx.send((Some(best_move), best_move_depth));
+impl MyApp {
+    fn handle_state_machine(&mut self, ctx: &egui::Context, clicked_sq: Option<SQ>) {
+        match self.state {
+            STATE_UX => {
+                // Game terminated, do nothing until new game
+            },
+            STATE_UZ => {
+                // Determine next player and state
+                if let Ok(board) = self.board.try_lock() {
+                     let current_player_index = board.turn() as usize; // 0 for White, 1 for Black
+                     self.state = BOOL_TO_STATE[self.players[current_player_index] as usize];
                 } else {
-                    // Handle case where no move was found (should be rare if legal moves exist)
-                    // Send a null move or handle appropriately
-                    println!("  [Engine Thread] No legal move found or search failed. Sending null move.");
-                    // Send None move with depth 0 to signal failure/completion without valid move
-                    let _ = tx.send((None, 0));
+                     ctx.request_repaint(); // Try again next frame if lock failed
                 }
-            });
+            },
+            STATE_U0 => {
+                // Waiting for Human Source Click
+                self.handle_source_click(ctx, clicked_sq);
+            },
+            STATE_U1 => {
+                // Waiting for Human Destination Click
+                self.handle_destination_click(ctx, clicked_sq);
+            },
+            STATE_U2 => {
+                // Start Engine Search
+                self.start_engine_search(ctx);
+            },
+            STATE_U3 => {
+                // Engine Thinking
+                self.handle_engine_thinking(ctx);
+            },
+            _ => self.state = STATE_UZ, // Invalid state, reset
+        }
+    }
+    
+    fn handle_source_click(&mut self, ctx: &egui::Context, clicked_sq: Option<SQ>) {
+        if let Some(sq) = clicked_sq {
+            if let Ok(board) = self.board.try_lock() {
+                let piece_on_sq = board.piece_at_sq(sq);
+                // Check if clicked square has a piece of the current player
+                if piece_on_sq != Piece::None && piece_on_sq.player().map_or(false, |p| p == board.turn()) {
+                    self.p0 = Some(sq);
+                    self.tagged = [0; 64]; // Clear old highlights
+                    self.tagged[sq_to_idx(sq)] = 2; // Highlight source square
 
-        } else if self.state == STATE_U3 { // Engine Thinking
-            if let Some(rx) = &self.rx {
-                 match rx.try_recv() {
-                     Ok((opt_move, depth)) => {
-                         // Check if it's a final move or just a depth update
-                         if let Some(applied_move) = opt_move {
-                              println!("[State U3] Received FINAL move {} (depth {}) from engine thread.", applied_move, depth);
-
-                              // --- Apply Final Move --- (This logic only runs if opt_move is Some)
-                               if let Ok(mut board) = self.board.try_lock() {
-                                   // Get move string *before* applying the move
-                                   let move_string = applied_move.stringify(); // Use stringify()
-                                   board.apply_move(applied_move);
-
-                                   // Calculate static eval *after* move is applied
-                                   println!("  -> Engine applied move. New Board FEN: {}", board.fen());
-                                   let static_eval = Eval::eval_low(&board) as i16;
-
-                                   // Update UI (TODO: Get score/depth if available from bot)
-                                   self.last_move_msg = format!("Engine: {}", move_string);
-                                   self.last_score_msg = format!("Score: {:.2}", static_eval as f32 / 100.0); // Show static eval
-                                   self.last_depth_msg = format!("Depth: {}", depth); // Show search depth
-
-                                   self.tagged = [0; 64];
-                                   self.tagged[sq_to_idx(applied_move.get_src())] = 2;
-                                   self.tagged[sq_to_idx(applied_move.get_dest())] = 2;
-                                   self.p0 = None;
-
-                                   // Check for game over after engine move
-                                   if board.checkmate() {
-                                        self.last_move_msg.push_str(" Checkmate!");
-                                        self.state = STATE_UX;
-                                   } else if board.stalemate() || board.fifty_move_rule() {
-                                        self.last_move_msg.push_str(" Draw by 50-move or Stalemate!"); // Reverted message
-                                        self.state = STATE_UX;
-                                   } else {
-                                        self.state = STATE_UZ; // Continue game
-                                        println!("  -> Game continues. Transitioning to UZ.");
-                                   }
-
-                                   // Clear receiver only after processing final move
-                                   self.rx = None;
-                                } else {
-                                   ctx.request_repaint(); // Try lock again next frame
-                                }
-                         } else {
-                            // --- Depth Update --- (This logic runs if opt_move is None)
-                            if depth > 0 {
-                               println!("[State U3] Received depth update: {}", depth);
-                               self.last_depth_msg = format!("Depth: {} (searching...)", depth);
-                               // Keep requesting repaints to check for more messages
-                               ctx.request_repaint_after(Duration::from_millis(50));
-                            } else {
-                                // Depth 0 with None move signals failure from engine thread
-                                println!("  -> Engine thread signaled failure (depth 0). Ending game.");
-                                self.last_move_msg = "Engine failed to find a move.".to_owned();
-                                self.state = STATE_UX; // End game?
-                                self.rx = None;
-                            }
-                         }
-                     }
-                     Err(mpsc::TryRecvError::Empty) => {
-                         // Engine still thinking, request repaint to check again soon
-                         //println!("[State U3] Engine still thinking...");
-                         ctx.request_repaint_after(Duration::from_millis(50));
-                     }
-                     Err(mpsc::TryRecvError::Disconnected) => {
-                         // Thread panicked or sender dropped unexpectedly
-                         println!("[State U3] Engine thread disconnected unexpectedly!");
-                         self.last_move_msg = "Engine search thread error.".to_owned();
-                         self.state = STATE_UX;
-                         self.rx = None;
-                     }
-                 }
+                    // Highlight legal destinations
+                    let moves: MoveList = board.generate_moves();
+                    for m in moves.iter() {
+                        if (*m).get_src() == sq {
+                            self.tagged[sq_to_idx((*m).get_dest())] = 1;
+                        }
+                    }
+                    self.state = STATE_U1; // Move to waiting for destination
+                }
             } else {
-                 // Should not happen in state U3, reset state
-                 self.state = STATE_UZ;
+                ctx.request_repaint();
             }
+        }
+    }
+    
+    fn handle_destination_click(&mut self, ctx: &egui::Context, clicked_sq: Option<SQ>) {
+        if let Some(dest_sq) = clicked_sq {
+            if let Some(src_sq) = self.p0 {
+                // Attempt to find the move
+                let mut move_to_make: Option<BitMove> = None;
+                if let Ok(board) = self.board.try_lock() {
+                    let legal_moves: MoveList = board.generate_moves();
+                    // Check for promotion first
+                    let piece_on_src = board.piece_at_sq(src_sq);
+                    let is_pawn = piece_on_src.type_of() == PieceType::P;
+                    let promotion_rank = if board.turn() == Player::White { Rank::R8 } else { Rank::R1 };
+                    let is_promotion = is_pawn && dest_sq.rank() == promotion_rank;
+
+                    for m in legal_moves.iter() {
+                        if (*m).get_src() == src_sq && (*m).get_dest() == dest_sq {
+                            // Basic move match
+                            if is_promotion {
+                                // Found a potential promotion, check if it's queen promo
+                                if (*m).is_promo() && (*m).promo_piece() == PieceType::Q {
+                                    move_to_make = Some(*m);
+                                    break;
+                                }
+                            } else {
+                                // Non-promotion move matches
+                                move_to_make = Some(*m);
+                                break;
+                            }
+                        }
+                    }
+
+                    // If no queen promotion found, but it *should* be a promotion, create queen promo
+                    if move_to_make.is_none() && is_promotion {
+                        let target_piece = board.piece_at_sq(dest_sq);
+                        let promo_flag = if target_piece != Piece::None {
+                            BitMove::FLAG_PROMO_CAP_Q // Capture promotion
+                        } else {
+                            BitMove::FLAG_PROMO_Q // Simple promotion
+                        };
+                        move_to_make = Some(BitMove::make(promo_flag, src_sq, dest_sq));
+                    }
+                } else {
+                    ctx.request_repaint();
+                    return;
+                }
+
+                if let Some(move_to_apply) = move_to_make {
+                    // Apply the move
+                    if let Ok(mut board) = self.board.try_lock() {
+                        let move_string = move_to_apply.stringify();
+                        board.apply_move(move_to_apply);
+                        self.move_count += 1; // Increment move counter
+
+                        // Update UI
+                        self.last_move_msg = format!("Human: {}", move_string);
+                        self.last_score_msg = "".to_owned();
+                        self.last_depth_msg = "".to_owned();
+                        self.tagged = [0; 64];
+                        self.tagged[sq_to_idx(move_to_apply.get_src())] = 2;
+                        self.tagged[sq_to_idx(move_to_apply.get_dest())] = 2;
+                        self.p0 = None;
+                        self.state = STATE_UZ; // Go back to determine next player
+                    } else {
+                        ctx.request_repaint();
+                    }
+                } else {
+                    // Invalid move click or clicked source square again - reset to state U0
+                    self.p0 = None;
+                    self.tagged = [0; 64];
+                    self.state = STATE_UZ; // Reset highlights and state
+                }
+            } else {
+                // Should not happen if p0 is None in state U1, but reset just in case
+                self.p0 = None;
+                self.tagged = [0; 64];
+                self.state = STATE_UZ;
+            }
+        }
+    }
+    
+    fn start_engine_search(&mut self, ctx: &egui::Context) {
+        let (tx, rx) = mpsc::channel::<(Option<BitMove>, u16)>();
+        self.rx = Some(rx);
+        let time_ms = (self.time_per_move * 1000.0) as u64;
+
+        self.state = STATE_U3; // Move to thinking state
+        
+        // Start time measurement to display in UI
+        let start_time = Instant::now();
+        
+        // Update UI to show we're starting the search
+        self.last_depth_msg = "Starting search...".to_owned();
+        
+        // Make a copy of the board BEFORE spawning thread to avoid locking issues
+        let board_copy = if let Ok(board) = self.board.try_lock() {
+            board.clone()
+        } else {
+            // Failed to get initial lock, will try again next frame
+            self.state = STATE_U2;
+            ctx.request_repaint();
+            return;
+        };
+
+        thread::spawn(move || {
+            // No need to lock the board here since we're using our copy
+            let board_to_search = board_copy;
+            
+            // Use the time-based search directly
+            let move_found = JamboreeSearcher::best_move_time(board_to_search, time_ms);
+            
+            // Send the result back with an estimated depth (we don't know the actual depth)
+            let estimated_depth = 8; // Reasonable guess
+            let _ = tx.send((Some(move_found), estimated_depth));
+        });
+    }
+    
+    fn handle_engine_thinking(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.rx {
+            match rx.try_recv() {
+                Ok((opt_move, depth)) => {
+                    // Check if it's a final move or just a depth update
+                    if let Some(applied_move) = opt_move {
+                        // --- Apply Final Move ---
+                        if let Ok(mut board) = self.board.try_lock() {
+                            // Get move string *before* applying the move
+                            let move_string = applied_move.stringify();
+                            board.apply_move(applied_move);
+                            self.move_count += 1; // Increment move counter
+
+                            // Calculate static eval *after* move is applied
+                            let static_eval = Eval::eval_low(&board) as i16;
+
+                            // Update UI
+                            self.last_move_msg = format!("Engine: {}", move_string);
+                            self.last_score_msg = format!("Score: {:.2}", static_eval as f32 / 100.0);
+                            self.last_depth_msg = format!("Depth: ~{}", depth);
+
+                            self.tagged = [0; 64];
+                            self.tagged[sq_to_idx(applied_move.get_src())] = 2;
+                            self.tagged[sq_to_idx(applied_move.get_dest())] = 2;
+                            self.p0 = None;
+
+                            // Check for game over after engine move
+                            if board.checkmate() {
+                                self.last_move_msg.push_str(" Checkmate!");
+                                self.state = STATE_UX;
+                            } else if board.stalemate() || board.fifty_move_rule() {
+                                self.last_move_msg.push_str(" Draw by 50-move or Stalemate!");
+                                self.state = STATE_UX;
+                            } else {
+                                self.state = STATE_UZ; // Continue game
+                            }
+
+                            // Clear receiver only after processing final move
+                            self.rx = None;
+                        } else {
+                            ctx.request_repaint(); // Try lock again next frame
+                        }
+                    } else {
+                        // --- Depth Update ---
+                        if depth > 0 {
+                            self.last_depth_msg = format!("Depth: {} (searching...)", depth);
+                            // Keep requesting repaints to check for more messages
+                            ctx.request_repaint_after(Duration::from_millis(50));
+                        } else {
+                            // Depth 0 with None move signals failure from engine thread
+                            self.last_move_msg = "Engine failed to find a move.".to_owned();
+                            self.state = STATE_UX; // End game
+                            self.rx = None;
+                        }
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    // Engine still thinking, request repaint to check again soon
+                    ctx.request_repaint_after(Duration::from_millis(50));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    // Thread panicked or sender dropped unexpectedly
+                    self.last_move_msg = "Engine search thread error.".to_owned();
+                    self.state = STATE_UX;
+                    self.rx = None;
+                }
+            }
+        } else {
+            // Should not happen in state U3, reset state
+            self.state = STATE_UZ;
         }
     }
 }

@@ -22,6 +22,17 @@ pub trait Searcher {
     fn best_move(board: Board, depth: u16) -> BitMove
     where
         Self: Sized;
+        
+    /// Returns the BestMove of a position with a fixed time limit in milliseconds.
+    /// Default implementation uses depth-based search with a low depth for compatibility.
+    fn best_move_time(board: Board, time_ms: u64) -> BitMove
+    where
+        Self: Sized
+    {
+        // Default implementation just does a quick search at low depth
+        // Concrete implementations should override this with actual time-based search
+        Self::best_move(board, 4)
+    }
 }
 
 // https://doc.rust-lang.org/core/arch/x86_64/fn._mm_prefetch.html

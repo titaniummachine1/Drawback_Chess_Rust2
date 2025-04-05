@@ -137,6 +137,52 @@ impl Searcher for JamboreeSearcher {
         
         best_move
     }
+    
+    // Combined method with both time and depth limits
+    fn best_move_time_depth(board: Board, time_ms: u64, max_depth: u16) -> BitMove {
+        let alpha = NEG_INF_V;
+        let beta = INF_V;
+        let deadline = Instant::now() + Duration::from_millis(time_ms);
+        
+        // Start iterative deepening with time constraint
+        let mut best_move = BitMove::null();
+        let mut current_depth = 1;
+        
+        while current_depth <= max_depth {
+            if Instant::now() >= deadline {
+                break; // Time's up, return best move found so far
+            }
+            
+            let search_result = jamboree::jamboree(
+                &mut board.shallow_clone(), 
+                alpha, 
+                beta, 
+                current_depth, 
+                2, 
+                Some(deadline)
+            );
+            
+            // Only update if we got a valid move and didn't timeout during search
+            if search_result.bit_move != BitMove::null() && !jamboree::is_timeout(Some(deadline)) {
+                best_move = search_result.bit_move;
+            } else {
+                // If we timed out during search, stop the iterative deepening
+                break;
+            }
+            
+            current_depth += 1;
+        }
+        
+        // If we didn't find any move (unlikely), use a random legal move
+        if best_move == BitMove::null() {
+            let moves = board.generate_moves();
+            if !moves.is_empty() {
+                best_move = moves[0]; // Just take the first legal move
+            }
+        }
+        
+        best_move
+    }
 }
 
 impl Searcher for MiniMaxSearcher {

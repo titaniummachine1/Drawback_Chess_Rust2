@@ -180,6 +180,9 @@ impl eframe::App for MyApp {
                 ui.add(egui::Slider::new(&mut self.time_per_move, 0.1..=5.0).text("Seconds per move"))
                     .on_hover_text("Engine will use exactly this much time for each move.");
                 
+                ui.add(egui::Slider::new(&mut self.max_engine_depth, 1..=15).text("Max Depth"))
+                    .on_hover_text("Engine will stop search if this depth is reached, even if time remains.");
+                
                 ui.label(format!("Move: {}", self.move_count));
                 
                 if ui.button("Rotate Board").clicked() {
@@ -416,7 +419,6 @@ impl MyApp {
     fn start_engine_search(&mut self, ctx: &egui::Context) {
         let (tx, rx) = mpsc::channel::<(Option<BitMove>, u16)>();
         self.rx = Some(rx);
-        let time_ms = (self.time_per_move * 1000.0) as u64;
 
         self.state = STATE_U3; // Move to thinking state
         
@@ -435,17 +437,20 @@ impl MyApp {
             ctx.request_repaint();
             return;
         };
+        
+        // Get the time and depth limits
+        let time_ms = (self.time_per_move * 1000.0) as u64;
+        let max_depth = self.max_engine_depth;
 
         thread::spawn(move || {
             // No need to lock the board here since we're using our copy
             let board_to_search = board_copy;
             
-            // Use the time-based search directly
-            let move_found = JamboreeSearcher::best_move_time(board_to_search, time_ms);
+            // Use the combined time and depth-based search
+            let move_found = JamboreeSearcher::best_move_time_depth(board_to_search, time_ms, max_depth);
             
-            // Send the result back with an estimated depth (we don't know the actual depth)
-            let estimated_depth = 8; // Reasonable guess
-            let _ = tx.send((Some(move_found), estimated_depth));
+            // Send the result back with the max depth as an estimate (actual depth may be lower if timed out)
+            let _ = tx.send((Some(move_found), max_depth));
         });
     }
     

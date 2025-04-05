@@ -33,6 +33,18 @@ pub trait Searcher {
         // Concrete implementations should override this with actual time-based search
         Self::best_move(board, 4)
     }
+    
+    /// Returns the BestMove of a position with both time and depth limits.
+    /// Search will terminate when either time limit is reached or max depth is reached.
+    /// Default implementation uses time-based search.
+    fn best_move_time_depth(board: Board, time_ms: u64, max_depth: u16) -> BitMove
+    where
+        Self: Sized
+    {
+        // Default implementation just uses time-based search
+        // Concrete implementations should override this
+        Self::best_move_time(board, time_ms)
+    }
 }
 
 // https://doc.rust-lang.org/core/arch/x86_64/fn._mm_prefetch.html
